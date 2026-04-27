@@ -18,7 +18,7 @@ Sentry.init({
 });
 
 export async function connectDb(): Promise<void> {
-  await mongoose.connect(process.env.MONGODB_URI!);
+  await mongoose.connect((process.env.MONGODB_URI ?? process.env.MONGODB_URL)!);
   logger.info('MongoDB connected');
 }
 

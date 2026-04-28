@@ -2,17 +2,7 @@
 builder = "NIXPACKS"
 buildCommand = "npm install && npm run build"
 
-[[services]]
-name = "precursor-api"
-startCommand = "node dist/app.js"
-healthcheckPath = "/health"
-healthcheckTimeout = 30
-restartPolicyType = "ON_FAILURE"
-restartPolicyMaxRetries = 3
-
-[[services]]
-name = "precursor-cron"
-startCommand = "node dist/jobs/runner.js"
+[deploy]
 healthcheckPath = "/health"
 healthcheckTimeout = 30
 restartPolicyType = "ON_FAILURE"

@@ -3,12 +3,15 @@ import http from 'http';
 import cron from 'node-cron';
 import * as Sentry from '@sentry/node';
 import { runJob } from './job-runner';
+import { ingestElements } from './ingest-elements.job';
+import { computeEdges } from './compute-edges.job';
 import { snapshotLadder } from './snapshot-ladder.job';
 import { analyzeClusters } from './analyze-clusters.job';
 import { snapshotEconomy } from './snapshot-economy.job';
 import { matchClusters } from './match-clusters.job';
 import { gggApi } from '../adapters/ggg-api.adapter';
 import { connectDb } from '../app';
+import { Element } from '../models/element.model';
 import { logger } from '../logger';
 
 Sentry.init({
@@ -26,6 +29,16 @@ async function main(): Promise<void> {
   logger.info('Cron runner connected to MongoDB');
 
   await gggApi.init();
+
+  const patchVersion = process.env.PATCH_VERSION!;
+  const elementCount = await Element.countDocuments({ patch_version: patchVersion });
+  if (elementCount === 0) {
+    logger.info({ patchVersion }, 'No elements found — running initial seed');
+    await runJob('ingest-elements', () => ingestElements(patchVersion));
+    await runJob('compute-edges', () => computeEdges(patchVersion));
+  } else {
+    logger.info({ patchVersion, elementCount }, 'Elements present — skipping seed');
+  }
 
   const league = process.env.LEAGUE_NAME!;
 

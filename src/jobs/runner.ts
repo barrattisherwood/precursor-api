@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import http from 'http';
 import cron from 'node-cron';
 import * as Sentry from '@sentry/node';
 import { runJob } from './job-runner';
@@ -47,6 +48,19 @@ async function main(): Promise<void> {
   );
 
   logger.info('Cron runner started — all jobs scheduled');
+
+  const port = process.env.PORT ?? 3000;
+  http
+    .createServer((req, res) => {
+      if (req.url === '/health') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ status: 'ok' }));
+      } else {
+        res.writeHead(404);
+        res.end();
+      }
+    })
+    .listen(port, () => logger.info({ port }, 'Cron health server listening'));
 }
 
 main().catch(err => {

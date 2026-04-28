@@ -9,7 +9,8 @@
     "dev": "ts-node src/app.ts",
     "test": "jest",
     "test:coverage": "jest --coverage",
-    "jobs": "node dist/jobs/runner.js"
+    "jobs": "node dist/jobs/runner.js",
+    "seed": "node dist/jobs/seed.js"
   },
   "dependencies": {
     "@precursor/engine": "file:./vendor/precursor-engine-0.1.0.tgz",

@@ -3,8 +3,6 @@ import http from 'http';
 import cron from 'node-cron';
 import * as Sentry from '@sentry/node';
 import { runJob } from './job-runner';
-import { ingestElements } from './ingest-elements.job';
-import { computeEdges } from './compute-edges.job';
 import { snapshotLadder } from './snapshot-ladder.job';
 import { analyzeClusters } from './analyze-clusters.job';
 import { snapshotEconomy } from './snapshot-economy.job';

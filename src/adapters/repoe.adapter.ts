@@ -24,7 +24,9 @@ type RawGem = {
 
 export async function fetchGems(): Promise<RePoEGem[]> {
   const raw = await fetchRePoE<Record<string, RawGem>>('gems.json');
-  return Object.entries(raw).map(([name, gem]) => {
+  return Object.entries(raw)
+    .filter(([name]) => !name.endsWith('AltX') && !name.endsWith('AltY') && !name.endsWith('AltZ'))
+    .map(([name, gem]) => {
     const isSupport = gem.is_support === true;
     // Active skills use active_skill.types (PascalCase gameplay tags).
     // Support gems have no active_skill; mark them with 'Support' so the normalizer

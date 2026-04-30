@@ -11,6 +11,7 @@ export async function fetchRePoE<T>(file: string): Promise<T> {
 type RawSkillGem = {
   base_item?: { id?: string; display_name?: string; release_state?: string };
   gem_type?: 'active' | 'support';
+  crafting_level?: number | null;
   grants_skills?: string[];
   tags?: string[];
 };
@@ -33,7 +34,12 @@ export async function fetchGems(): Promise<RePoEGem[]> {
   ]);
 
   return Object.entries(skillGems)
-    .filter(([, gem]) => gem.base_item?.release_state === 'released')
+    .filter(([, gem]) =>
+      gem.base_item?.release_state === 'released' &&
+      // Exclude non-equippable skills (ascendancy, unique-item triggers, monster skills).
+      // Support gems always have crafting_level 0; active gems only if player-equippable.
+      (gem.gem_type === 'support' || (gem.crafting_level ?? 0) > 0),
+    )
     .map(([key, gem]) => {
       const isSupport = gem.gem_type === 'support';
       const skillId = gem.grants_skills?.[0];

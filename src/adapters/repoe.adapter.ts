@@ -8,54 +8,56 @@ export async function fetchRePoE<T>(file: string): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-type RawGem = {
-  active_skill?: { display_name?: string; id?: string; types?: string[] } | null;
-  base_item?: { id?: string; release_state?: string };
-  display_name?: string;
+type RawSkillGem = {
+  base_item?: { id?: string; display_name?: string; release_state?: string };
+  gem_type?: 'active' | 'support';
+  grants_skills?: string[];
+  tags?: string[];
+};
+
+type RawSkillDef = {
+  active_skill?: { types?: string[] } | null;
   is_support?: boolean;
   per_level?: Record<string, unknown>;
   support_gem?: {
     allowed_types?: string[];
-    excluded_types?: string[] | null;
     added_types?: string[] | null;
-    supports_gems_only?: boolean;
+    excluded_types?: string[] | null;
   } | null;
 };
 
 export async function fetchGems(): Promise<RePoEGem[]> {
-  const raw = await fetchRePoE<Record<string, RawGem>>('gems.json');
-  return Object.entries(raw)
-    .filter(([name]) =>
-      !name.endsWith('AltX') && !name.endsWith('AltY') && !name.endsWith('AltZ') &&
-      !name.startsWith('SupportAwakened') &&
-      !name.startsWith('Vaal'),
-    )
-    .map(([name, gem]) => {
-    const isSupport = gem.is_support === true;
-    // Active skills use active_skill.types (PascalCase gameplay tags).
-    // Support gems have no active_skill; mark them with 'Support' so the normalizer
-    // identifies them and uses support_gem.added_tags as scales_keywords.
-    const tags = isSupport
-      ? ['Support']
-      : (gem.active_skill?.types ?? []);
+  const [skillGems, skills] = await Promise.all([
+    fetchRePoE<Record<string, RawSkillGem>>('skill_gems.json'),
+    fetchRePoE<Record<string, RawSkillDef>>('skills.json'),
+  ]);
 
-    return {
-      id: gem.base_item?.id ?? name,
-      display_name: gem.display_name ?? gem.active_skill?.display_name ?? name,
-      release_state: gem.base_item?.release_state ?? 'unreleased',
-      tags,
-      per_level: gem.per_level,
-      support_gem: isSupport
-        ? {
-            // allowed_types = what skill types this support can be applied to;
-            // stored as added_tags so extractScalesKeywords returns them.
-            added_tags: gem.support_gem?.allowed_types ?? [],
-            support_only_with: gem.support_gem?.allowed_types ?? [],
-            excluded_tags: gem.support_gem?.excluded_types?.filter(Boolean) ?? [],
-          }
-        : undefined,
-    };
-  });
+  return Object.entries(skillGems)
+    .filter(([, gem]) => gem.base_item?.release_state === 'released')
+    .map(([key, gem]) => {
+      const isSupport = gem.gem_type === 'support';
+      const skillId = gem.grants_skills?.[0];
+      const skill = skillId ? skills[skillId] : undefined;
+
+      const tags = isSupport
+        ? ['Support']
+        : (skill?.active_skill?.types ?? []);
+
+      return {
+        id: gem.base_item?.id ?? key,
+        display_name: gem.base_item?.display_name ?? key,
+        release_state: gem.base_item?.release_state ?? 'unreleased',
+        tags,
+        per_level: skill?.per_level,
+        support_gem: isSupport
+          ? {
+              added_tags: skill?.support_gem?.allowed_types ?? [],
+              support_only_with: skill?.support_gem?.allowed_types ?? [],
+              excluded_tags: skill?.support_gem?.excluded_types?.filter(Boolean) ?? [],
+            }
+          : undefined,
+      };
+    });
 }
 
 export async function fetchMods(): Promise<Record<string, RePoEMod>> {
@@ -63,5 +65,5 @@ export async function fetchMods(): Promise<Record<string, RePoEMod>> {
 }
 
 export async function fetchStatTranslations(): Promise<Record<string, unknown>> {
-  return fetchRePoE<Record<string, unknown>>('stat_translations.json');
+  return fetchRePoE<Record<string, unknown>>('stat_translations/English.json');
 }

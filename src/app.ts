@@ -26,6 +26,7 @@ export async function connectDb(): Promise<void> {
 const ALLOWED_ORIGINS = [
   'https://precursor.nexus',
   'https://www.precursor.nexus',
+  ...(process.env.CORS_EXTRA_ORIGINS ? process.env.CORS_EXTRA_ORIGINS.split(',').map(o => o.trim()) : []),
   ...(process.env.NODE_ENV === 'development' ? ['http://localhost:4200'] : []),
 ];
 

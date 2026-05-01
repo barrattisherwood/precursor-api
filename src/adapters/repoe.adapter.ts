@@ -73,11 +73,11 @@ export async function fetchGems(): Promise<RePoEGem[]> {
               // gem explicitly adds to skills) filtered to synergy-relevant keywords.
               // Fall back to filtered allowed_types so support gems with null added_types
               // still carry a keyword signal.
-              added_tags: (
+              added_tags: [...new Set(
                 skill?.support_gem?.added_types?.filter(Boolean).filter(t => SYNERGY_KEYWORDS.has(t)) ??
                 skill?.support_gem?.allowed_types?.filter(t => SYNERGY_KEYWORDS.has(t)) ??
                 []
-              ),
+              )],
               support_only_with: skill?.support_gem?.allowed_types ?? [],
               excluded_tags: skill?.support_gem?.excluded_types?.filter(Boolean) ?? [],
             }

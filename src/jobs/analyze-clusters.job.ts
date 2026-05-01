@@ -1,14 +1,13 @@
 import {
   findChainClusters,
   computeAllKeywordEdges,
-  computeConditionEdges,
   computeStatMultiplicationEdges,
   computeHiddenScore,
   computeSpiritFeasibility,
   generateClusterDescription,
   IElement,
 } from '@precursor/engine';
-import { Element, IElementDoc } from '../models/element.model';
+import { Element } from '../models/element.model';
 import { SynergyEdge } from '../models/synergy-edge.model';
 import { SynergyCluster } from '../models/synergy-cluster.model';
 import { BuildInstance } from '../models/build-instance.model';
@@ -135,8 +134,10 @@ export async function analyzeClusters(): Promise<void> {
           patch_version: PATCH_VERSION,
         },
         update: {
-          $set: {
+          $setOnInsert: {
             element_ids: elementIds.map(id => new Types.ObjectId(id)),
+          },
+          $set: {
             facets_represented: partial.facets_represented,
             edges: partial.edges.map(e => ({
               from: new Types.ObjectId(e.from.toString()),

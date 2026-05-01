@@ -2,6 +2,18 @@ import { RePoEGem, RePoEMod } from '@precursor/engine';
 
 const BASE = process.env.REPOE_BASE_URL!;
 
+// Tags the engine's keyword algorithm assigns specificity to, plus common PoE2 types.
+// Filtering to these prevents the weight denominator being bloated by meta-tags like
+// Trappable/Totemable/Triggerable/Unleashable which carry no synergy signal.
+const SYNERGY_KEYWORDS = new Set([
+  'Damage', 'Spell', 'Attack', 'Melee', 'Minion', 'Duration',
+  'Fire', 'Cold', 'Lightning', 'Physical', 'Chaos',
+  'Projectile', 'Area', 'AoE',
+  'Ignite', 'Freeze', 'Shock', 'Chill', 'Poison', 'Bleed', 'Bleeding',
+  'Slam', 'Channelling', 'Channeling', 'Mark', 'Herald', 'Warcry',
+  'Bow', 'Crossbow', 'Strike',
+]);
+
 export async function fetchRePoE<T>(file: string): Promise<T> {
   const res = await fetch(`${BASE}/${file}`);
   if (!res.ok) throw new Error(`RePoE fetch failed: ${file} ${res.status}`);
@@ -45,19 +57,27 @@ export async function fetchGems(): Promise<RePoEGem[]> {
       const skillId = gem.grants_skills?.[0];
       const skill = skillId ? skills[skillId] : undefined;
 
-      const tags = isSupport
+      const rawTags = isSupport
         ? ['Support']
-        : (skill?.active_skill?.types ?? []);
+        : (skill?.active_skill?.types ?? []).filter(t => SYNERGY_KEYWORDS.has(t));
 
       return {
         id: gem.base_item?.id ?? key,
         display_name: gem.base_item?.display_name ?? key,
         release_state: gem.base_item?.release_state ?? 'unreleased',
-        tags,
+        tags: rawTags,
         per_level: skill?.per_level,
         support_gem: isSupport
           ? {
-              added_tags: skill?.support_gem?.allowed_types ?? [],
+              // added_tags drives scales_keywords in the engine — use added_types (what this
+              // gem explicitly adds to skills) filtered to synergy-relevant keywords.
+              // Fall back to filtered allowed_types so support gems with null added_types
+              // still carry a keyword signal.
+              added_tags: (
+                skill?.support_gem?.added_types?.filter(Boolean).filter(t => SYNERGY_KEYWORDS.has(t)) ??
+                skill?.support_gem?.allowed_types?.filter(t => SYNERGY_KEYWORDS.has(t)) ??
+                []
+              ),
               support_only_with: skill?.support_gem?.allowed_types ?? [],
               excluded_tags: skill?.support_gem?.excluded_types?.filter(Boolean) ?? [],
             }

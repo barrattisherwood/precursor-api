@@ -3,6 +3,7 @@ import express from 'express';
 import mongoose from 'mongoose';
 import cors from 'cors';
 import * as Sentry from '@sentry/node';
+import { adminRouter } from './routes/admin.route';
 import { clustersRouter } from './routes/clusters.route';
 import { elementsRouter } from './routes/elements.route';
 import { economyRouter } from './routes/economy.route';
@@ -51,6 +52,7 @@ app.use(attributionHeader);
 app.use(rateLimiter);
 
 app.use('/health', healthRouter);
+app.use('/api/admin', adminRouter);
 app.use('/api/clusters', clustersRouter);
 app.use('/api/elements', elementsRouter);
 app.use('/api/economy', economyRouter);

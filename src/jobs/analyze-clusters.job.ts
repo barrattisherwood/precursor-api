@@ -95,7 +95,8 @@ export async function analyzeClusters(): Promise<void> {
   const ops = [];
 
   for (const partial of allPartial) {
-    const elementIds = partial.element_ids.map(id => id.toString());
+    const elementIds = [...partial.element_ids.map(id => id.toString())].sort();
+    const clusterKey = elementIds.join(':');
 
     // Count how many ladder builds contain ALL elements in this cluster
     const usageCount = await BuildInstance.countDocuments({
@@ -129,12 +130,10 @@ export async function analyzeClusters(): Promise<void> {
 
     ops.push({
       updateOne: {
-        filter: {
-          element_ids: { $all: elementIds.map(id => new Types.ObjectId(id)) },
-          patch_version: PATCH_VERSION,
-        },
+        filter: { cluster_key: clusterKey, patch_version: PATCH_VERSION },
         update: {
           $setOnInsert: {
+            cluster_key: clusterKey,
             element_ids: elementIds.map(id => new Types.ObjectId(id)),
           },
           $set: {

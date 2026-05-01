@@ -1,6 +1,7 @@
 import mongoose, { Schema, Document, Types } from 'mongoose';
 
 export interface ISynergyClusterDoc extends Document {
+  cluster_key: string;
   element_ids: Types.ObjectId[];
   facets_represented: string[];
   edges: Array<{
@@ -24,6 +25,7 @@ export interface ISynergyClusterDoc extends Document {
 }
 
 const SynergyClusterSchema = new Schema<ISynergyClusterDoc>({
+  cluster_key: { type: String, required: true },
   element_ids: [{ type: Schema.Types.ObjectId, ref: 'Element' }],
   facets_represented: [String],
   edges: [
@@ -48,6 +50,7 @@ const SynergyClusterSchema = new Schema<ISynergyClusterDoc>({
   active: { type: Boolean, default: true },
 });
 
+SynergyClusterSchema.index({ cluster_key: 1, patch_version: 1 }, { unique: true });
 SynergyClusterSchema.index({ hidden_score: -1 });
 SynergyClusterSchema.index({ element_ids: 1 });
 SynergyClusterSchema.index({ patch_version: 1, hidden_score: -1 });

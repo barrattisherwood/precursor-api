@@ -83,7 +83,7 @@ export async function analyzeClusters(): Promise<void> {
     return {
       element_ids: [edge.element_a, edge.element_b] as import('mongodb').ObjectId[],
       facets_represented: [elA.facet, elB.facet],
-      edges: [{ from: edge.element_a, to: edge.element_b, edge_type: edge.edge_type, weight: edge.weight }],
+      edges: [{ from: edge.element_a, to: edge.element_b, edge_type: edge.edge_type, weight: edge.weight, link: edge.link }],
       theoretical_score: edge.weight,
     };
   }).filter(Boolean) as typeof partialClusters;
@@ -121,11 +121,12 @@ export async function analyzeClusters(): Promise<void> {
       .map(id => elementMap.get(id))
       .filter(Boolean) as IElement[];
 
-    const description = generateClusterDescription(clusterElements, partial.edges.map(e => ({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const description = generateClusterDescription(clusterElements, partial.edges.map((e: any) => ({
       from: e.from,
       to: e.to,
       edge_type: e.edge_type,
-      link: {},
+      link: e.link ?? {},
     })));
 
     ops.push({

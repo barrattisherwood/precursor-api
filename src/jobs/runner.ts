@@ -60,16 +60,41 @@ async function main(): Promise<void> {
 
   logger.info('Cron runner started — all jobs scheduled');
 
+  const JOBS: Record<string, () => Promise<void>> = {
+    'analyze-clusters': () => analyzeClusters(),
+    'snapshot-ladder':  () => snapshotLadder(league),
+    'snapshot-economy': () => snapshotEconomy(league),
+    'match-clusters':   () => matchClusters(),
+  };
+
   const port = process.env.PORT ?? 3000;
   http
     .createServer((req, res) => {
       if (req.url === '/health') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ status: 'ok' }));
-      } else {
-        res.writeHead(404);
-        res.end();
+        res.end(JSON.stringify({ status: 'ok', build: '20260504' }));
+        return;
       }
+
+      const triggerMatch = req.url?.match(/^\/trigger\/([a-z-]+)$/);
+      if (triggerMatch && req.method === 'POST') {
+        const jobName = triggerMatch[1];
+        const jobFn = JOBS[jobName];
+        if (!jobFn) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: `Unknown job: ${jobName}`, available: Object.keys(JOBS) }));
+          return;
+        }
+        res.writeHead(202, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ status: 'accepted', job: jobName }));
+        runJob(jobName, jobFn).catch(err =>
+          logger.error({ err, jobName }, 'Manual trigger failed'),
+        );
+        return;
+      }
+
+      res.writeHead(404);
+      res.end();
     })
     .listen(port, () => logger.info({ port }, 'Cron health server listening'));
 }

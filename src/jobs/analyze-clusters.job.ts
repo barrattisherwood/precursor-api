@@ -72,12 +72,14 @@ export async function analyzeClusters(): Promise<void> {
   // Discover clusters from condition chains
   const partialClusters = findChainClusters(conditionEdges, elementMap, 3);
 
-  // Find keyword and stat clusters — triangles (3-cliques) preferred over isolated pairs
-  const keywordEdges = computeAllKeywordEdges(elements).filter(e => e.weight >= 0.5);
-  const statEdges = computeStatMultiplicationEdges(elements).filter(e => e.weight >= 0.4);
+  // Find keyword and stat clusters — triangles preferred over isolated pairs.
+  // Pass edges at a lower threshold so weaker edges can complete triangles;
+  // pairThreshold ensures standalone pairs are still held to a higher bar.
+  const keywordEdges = computeAllKeywordEdges(elements).filter(e => e.weight >= 0.25);
+  const statEdges = computeStatMultiplicationEdges(elements).filter(e => e.weight >= 0.25);
 
-  const keywordClusters = findKeywordClusters(keywordEdges, elementMap);
-  const statClusters = findKeywordClusters(statEdges, elementMap);
+  const keywordClusters = findKeywordClusters(keywordEdges, elementMap, 0.5);
+  const statClusters = findKeywordClusters(statEdges, elementMap, 0.4);
 
   const allPartial = [...partialClusters, ...keywordClusters, ...statClusters];
   logger.info({ count: allPartial.length }, 'Partial clusters discovered');

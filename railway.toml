@@ -1,6 +1,6 @@
 [build]
 builder = "NIXPACKS"
-buildCommand = "npm install --include=dev && npm run build"
+buildCommand = "rm -f package-lock.json && npm install --include=dev && npm run build"
 
 [deploy]
 healthcheckPath = "/health"

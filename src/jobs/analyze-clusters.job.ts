@@ -1,5 +1,6 @@
 import {
   findChainClusters,
+  findKeywordClusters,
   computeAllKeywordEdges,
   computeStatMultiplicationEdges,
   computeHiddenScore,
@@ -71,36 +72,26 @@ export async function analyzeClusters(): Promise<void> {
   // Discover clusters from condition chains
   const partialClusters = findChainClusters(conditionEdges, elementMap, 3);
 
-  // Also find keyword-heavy clusters (pairs/triples with strong keyword overlap)
+  // Find keyword and stat clusters — triangles (3-cliques) preferred over isolated pairs
   const keywordEdges = computeAllKeywordEdges(elements).filter(e => e.weight >= 0.5);
   const statEdges = computeStatMultiplicationEdges(elements).filter(e => e.weight >= 0.4);
 
-  // Build keyword pairs as clusters
-  const pairClusters = [...keywordEdges, ...statEdges].map(edge => {
-    const elA = elementMap.get(edge.element_a.toString());
-    const elB = elementMap.get(edge.element_b.toString());
-    if (!elA || !elB) return null;
-    return {
-      element_ids: [edge.element_a, edge.element_b] as import('mongodb').ObjectId[],
-      facets_represented: [elA.facet, elB.facet],
-      edges: [{ from: edge.element_a, to: edge.element_b, edge_type: edge.edge_type, weight: edge.weight, link: edge.link }],
-      theoretical_score: edge.weight,
-    };
-  }).filter(Boolean) as typeof partialClusters;
+  const keywordClusters = findKeywordClusters(keywordEdges, elementMap);
+  const statClusters = findKeywordClusters(statEdges, elementMap);
 
-  const allPartial = [...partialClusters, ...pairClusters];
+  const allPartial = [...partialClusters, ...keywordClusters, ...statClusters];
   logger.info({ count: allPartial.length }, 'Partial clusters discovered');
 
   // Score and persist
   const ops = [];
 
   for (const partial of allPartial) {
-    const elementIds = [...partial.element_ids.map(id => id.toString())].sort();
+    const elementIds = [...partial.element_ids.map((id: { toString(): string }) => id.toString())].sort();
     const clusterKey = elementIds.join(':');
 
     // Count how many ladder builds contain ALL elements in this cluster
     const usageCount = await BuildInstance.countDocuments({
-      active_elements: { $all: elementIds.map(id => new Types.ObjectId(id)) },
+      active_elements: { $all: elementIds.map((id: string) => new Types.ObjectId(id)) },
     });
 
     const hiddenScore = computeHiddenScore(
@@ -112,17 +103,16 @@ export async function analyzeClusters(): Promise<void> {
     );
 
     const spiritFeasible = computeSpiritFeasibility(elementIds, elementMap);
-    const comboGated = partial.element_ids.some(id => elementMap.get(id.toString())?.combo_required);
+    const comboGated = partial.element_ids.some((id: { toString(): string }) => elementMap.get(id.toString())?.combo_required);
     const leagueScoped = partial.element_ids.some(
-      id => elementMap.get(id.toString())?.meta.league_mechanic != null,
+      (id: { toString(): string }) => elementMap.get(id.toString())?.meta.league_mechanic != null,
     );
 
     const clusterElements = elementIds
-      .map(id => elementMap.get(id))
+      .map((id: string) => elementMap.get(id))
       .filter(Boolean) as IElement[];
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const description = generateClusterDescription(clusterElements, partial.edges.map((e: any) => ({
+    const description = generateClusterDescription(clusterElements, partial.edges.map((e: { from: { toString(): string }; to: { toString(): string }; edge_type: string; link?: Record<string, unknown> }) => ({
       from: e.from,
       to: e.to,
       edge_type: e.edge_type,
@@ -135,11 +125,11 @@ export async function analyzeClusters(): Promise<void> {
         update: {
           $setOnInsert: {
             cluster_key: clusterKey,
-            element_ids: elementIds.map(id => new Types.ObjectId(id)),
+            element_ids: elementIds.map((id: string) => new Types.ObjectId(id)),
           },
           $set: {
             facets_represented: partial.facets_represented,
-            edges: partial.edges.map(e => ({
+            edges: partial.edges.map((e: { from: { toString(): string }; to: { toString(): string }; edge_type: string; weight: number }) => ({
               from: new Types.ObjectId(e.from.toString()),
               to: new Types.ObjectId(e.to.toString()),
               edge_type: e.edge_type,

@@ -73,20 +73,13 @@ export async function analyzeClusters(): Promise<void> {
   const partialClusters = findChainClusters(conditionEdges, elementMap, 3);
 
   // Find keyword and stat clusters — triangles preferred over isolated pairs.
-  // Pass edges at a lower threshold so weaker edges can complete triangles;
-  // pairThreshold ensures standalone pairs are still held to a higher bar.
   const keywordEdges = computeAllKeywordEdges(elements).filter(e => e.weight >= 0.1);
   const statEdges = computeStatMultiplicationEdges(elements).filter(e => e.weight >= 0.1);
-
-  const kwMax = keywordEdges.reduce((m, e) => Math.max(m, e.weight), 0);
-  const stMax = statEdges.reduce((m, e) => Math.max(m, e.weight), 0);
-  logger.info({ keywordEdgeCount: keywordEdges.length, kwMaxWeight: kwMax.toFixed(3), statEdgeCount: statEdges.length, stMaxWeight: stMax.toFixed(3) }, 'Edges computed');
 
   const keywordClusters = findKeywordClusters(keywordEdges, elementMap, 0.5);
   const statClusters = findKeywordClusters(statEdges, elementMap, 0.4);
 
-  const kwSample = keywordClusters.slice(0, 5).map(c => ({ size: c.element_ids.length, score: c.theoretical_score.toFixed(3) }));
-  logger.info({ keywordClusters: keywordClusters.length, statClusters: statClusters.length, conditionClusters: partialClusters.length, kwSample }, 'Cluster counts by type');
+  logger.info({ keywordClusters: keywordClusters.length, statClusters: statClusters.length, conditionClusters: partialClusters.length }, 'Cluster counts by type');
 
   const allPartial = [...partialClusters, ...keywordClusters, ...statClusters];
   logger.info({ count: allPartial.length }, 'Partial clusters discovered');

@@ -75,8 +75,8 @@ export async function analyzeClusters(): Promise<void> {
   // Find keyword and stat clusters — triangles preferred over isolated pairs.
   // Pass edges at a lower threshold so weaker edges can complete triangles;
   // pairThreshold ensures standalone pairs are still held to a higher bar.
-  const keywordEdges = computeAllKeywordEdges(elements).filter(e => e.weight >= 0.25);
-  const statEdges = computeStatMultiplicationEdges(elements).filter(e => e.weight >= 0.25);
+  const keywordEdges = computeAllKeywordEdges(elements).filter(e => e.weight >= 0.1);
+  const statEdges = computeStatMultiplicationEdges(elements).filter(e => e.weight >= 0.1);
 
   const kwMax = keywordEdges.reduce((m, e) => Math.max(m, e.weight), 0);
   const stMax = statEdges.reduce((m, e) => Math.max(m, e.weight), 0);

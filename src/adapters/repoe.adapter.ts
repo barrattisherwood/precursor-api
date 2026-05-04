@@ -28,10 +28,15 @@ type RawSkillGem = {
   tags?: string[];
 };
 
+type RawStatEntry = { id: string; type?: string; value?: number };
+
 type RawSkillDef = {
   active_skill?: { types?: string[] } | null;
   is_support?: boolean;
   per_level?: Record<string, unknown>;
+  stat_sets?: Array<{
+    static?: { stats?: RawStatEntry[] };
+  }> | null;
   support_gem?: {
     allowed_types?: string[];
     added_types?: string[] | null;
@@ -61,12 +66,17 @@ export async function fetchGems(): Promise<RePoEGem[]> {
         ? ['Support']
         : (skill?.active_skill?.types ?? []).filter(t => SYNERGY_KEYWORDS.has(t));
 
+      const staticStats = skill?.stat_sets?.[0]?.static?.stats?.filter(
+        (s): s is RawStatEntry & { id: string } => Boolean(s?.id),
+      ) ?? [];
+
       return {
         id: gem.base_item?.id ?? key,
         display_name: gem.base_item?.display_name ?? key,
         release_state: gem.base_item?.release_state ?? 'unreleased',
         tags: rawTags,
         per_level: skill?.per_level,
+        static: staticStats.length > 0 ? { stats: staticStats } : undefined,
         support_gem: isSupport
           ? {
               // added_tags drives scales_keywords in the engine — use added_types (what this

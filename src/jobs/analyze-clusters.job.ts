@@ -85,7 +85,8 @@ export async function analyzeClusters(): Promise<void> {
   const keywordClusters = findKeywordClusters(keywordEdges, elementMap, 0.5);
   const statClusters = findKeywordClusters(statEdges, elementMap, 0.4);
 
-  logger.info({ keywordClusters: keywordClusters.length, statClusters: statClusters.length, conditionClusters: partialClusters.length }, 'Cluster counts by type');
+  const kwSample = keywordClusters.slice(0, 5).map(c => ({ size: c.element_ids.length, score: c.theoretical_score.toFixed(3) }));
+  logger.info({ keywordClusters: keywordClusters.length, statClusters: statClusters.length, conditionClusters: partialClusters.length, kwSample }, 'Cluster counts by type');
 
   const allPartial = [...partialClusters, ...keywordClusters, ...statClusters];
   logger.info({ count: allPartial.length }, 'Partial clusters discovered');

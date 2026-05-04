@@ -31,7 +31,7 @@ type RawSkillGem = {
 type RawStatEntry = { id: string; type?: string; value?: number };
 
 type RawSkillDef = {
-  active_skill?: { types?: string[] } | null;
+  active_skill?: { types?: string[]; description?: string } | null;
   is_support?: boolean;
   per_level?: Record<string, unknown>;
   stat_sets?: Array<{
@@ -77,6 +77,7 @@ export async function fetchGems(): Promise<RePoEGem[]> {
         tags: rawTags,
         per_level: skill?.per_level,
         static: staticStats.length > 0 ? { stats: staticStats } : undefined,
+        description: skill?.active_skill?.description ?? undefined,
         support_gem: isSupport
           ? {
               // added_tags drives scales_keywords in the engine — use added_types (what this

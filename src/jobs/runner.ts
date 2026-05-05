@@ -61,6 +61,8 @@ async function main(): Promise<void> {
   logger.info('Cron runner started — all jobs scheduled');
 
   const JOBS: Record<string, () => Promise<void>> = {
+    'ingest-elements':  () => ingestElements(patchVersion),
+    'compute-edges':    () => computeEdges(patchVersion),
     'analyze-clusters': () => analyzeClusters(),
     'snapshot-ladder':  () => snapshotLadder(league),
     'snapshot-economy': () => snapshotEconomy(league),

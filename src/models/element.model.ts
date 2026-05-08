@@ -9,7 +9,7 @@ const ElementSchema = new Schema<IElementDoc>(
     name: { type: String, required: true },
     facet: {
       type: String,
-      enum: ['skill_gem', 'support_gem', 'passive_node', 'ascendancy_node', 'item_affix'],
+      enum: ['skill_gem', 'support_gem', 'passive_node', 'ascendancy_node', 'item_affix', 'unique_item'],
       required: true,
     },
     meta: {
@@ -31,6 +31,13 @@ const ElementSchema = new Schema<IElementDoc>(
         type: String,
         enum: ['Breach', 'Sanctum', 'Ritual', 'Expedition', null],
       },
+      // unique_item
+      unique_item_class: String,
+      base_item_name: String,
+      flavour_text: String,
+      // shared
+      stat_lines: [String],
+      description: String,
     },
     keywords: [String],
     produces: [
@@ -64,7 +71,7 @@ const ElementSchema = new Schema<IElementDoc>(
     patch_version: { type: String, required: true },
     source: {
       type: String,
-      enum: ['repoe_fork', 'poe2db', 'skilltree_export', 'manual'],
+      enum: ['repoe_fork', 'poe2db', 'poe2wiki', 'skilltree_export', 'manual'],
       required: true,
     },
     last_updated: { type: Date, default: Date.now },

@@ -74,7 +74,7 @@ async function main(): Promise<void> {
     .createServer((req, res) => {
       if (req.url === '/health') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ status: 'ok', build: '20260504' }));
+        res.end(JSON.stringify({ status: 'ok', build: '20260509' }));
         return;
       }
 

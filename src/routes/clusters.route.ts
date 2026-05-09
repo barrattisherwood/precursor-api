@@ -52,11 +52,14 @@ clustersRouter.get('/', cache(300), async (req: Request, res: Response) => {
       // Fetch enough candidates to fill the page after diversity filtering.
       // Over-fetch by a factor so filtering doesn't leave the page thin.
       const OVER_FETCH = 20;
-      const candidates = await SynergyCluster.find(query)
-        .sort({ [sortField]: -1 })
-        .limit((pageOffset + pageSize) * OVER_FETCH)
-        .populate('element_ids')
-        .lean();
+      const [candidates, trueTotal] = await Promise.all([
+        SynergyCluster.find(query)
+          .sort({ [sortField]: -1 })
+          .limit((pageOffset + pageSize) * OVER_FETCH)
+          .populate('element_ids')
+          .lean(),
+        SynergyCluster.countDocuments(query),
+      ]);
 
       const elementCount = new Map<string, number>();
       const filtered = candidates.filter(c => {
@@ -70,7 +73,7 @@ clustersRouter.get('/', cache(300), async (req: Request, res: Response) => {
         return true;
       });
 
-      total = filtered.length;
+      total = trueTotal;
       clusters = filtered.slice(pageOffset, pageOffset + pageSize);
     } else {
       [clusters, total] = await Promise.all([

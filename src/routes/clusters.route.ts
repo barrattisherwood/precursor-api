@@ -17,6 +17,7 @@ clustersRouter.get('/', cache(300), async (req: Request, res: Response) => {
       combo_gated,
       edge_type,
       element_id,
+      tags,
       limit = '20',
       offset = '0',
     } = req.query;
@@ -29,6 +30,10 @@ clustersRouter.get('/', cache(300), async (req: Request, res: Response) => {
     if (combo_gated === 'true') query.combo_gated = true;
     if (edge_type) query['edges.edge_type'] = edge_type;
     if (element_id) query.element_ids = element_id;
+    if (tags) {
+      const tagList = String(tags).split(',').map(t => t.trim()).filter(Boolean);
+      if (tagList.length > 0) query.tags = { $all: tagList };
+    }
 
     const validSortFields = ['hidden_score', 'theoretical_score', 'usage_pct'];
     const sortField = validSortFields.includes(sort as string) ? (sort as string) : 'hidden_score';

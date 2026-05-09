@@ -140,6 +140,12 @@ export async function analyzeClusters(): Promise<void> {
       link: e.link ?? {},
     })));
 
+    const tags = [
+      ...new Set(
+        clusterElements.flatMap(e => [...(e.keywords ?? []), ...(e.scales_keywords ?? [])]),
+      ),
+    ];
+
     ops.push({
       updateOne: {
         filter: { cluster_key: clusterKey, patch_version: PATCH_VERSION },
@@ -150,6 +156,7 @@ export async function analyzeClusters(): Promise<void> {
           },
           $set: {
             facets_represented: partial.facets_represented,
+            tags,
             edges: partial.edges.map((e: { from: { toString(): string }; to: { toString(): string }; edge_type: string; weight: number }) => ({
               from: new Types.ObjectId(e.from.toString()),
               to: new Types.ObjectId(e.to.toString()),

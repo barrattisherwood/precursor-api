@@ -4,6 +4,7 @@ export interface ISynergyClusterDoc extends Document {
   cluster_key: string;
   element_ids: Types.ObjectId[];
   facets_represented: string[];
+  tags: string[];
   edges: Array<{
     from: Types.ObjectId;
     to: Types.ObjectId;
@@ -28,6 +29,7 @@ const SynergyClusterSchema = new Schema<ISynergyClusterDoc>({
   cluster_key: { type: String, required: true },
   element_ids: [{ type: Schema.Types.ObjectId, ref: 'Element' }],
   facets_represented: [String],
+  tags: { type: [String], default: [] },
   edges: [
     {
       from: { type: Schema.Types.ObjectId, ref: 'Element' },
@@ -55,6 +57,7 @@ SynergyClusterSchema.index({ hidden_score: -1 });
 SynergyClusterSchema.index({ element_ids: 1 });
 SynergyClusterSchema.index({ patch_version: 1, hidden_score: -1 });
 SynergyClusterSchema.index({ facets_represented: 1 });
+SynergyClusterSchema.index({ tags: 1 });
 SynergyClusterSchema.index({ league_scoped: 1, active: 1 });
 SynergyClusterSchema.index({ spirit_feasible: 1 });
 

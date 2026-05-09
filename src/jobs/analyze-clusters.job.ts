@@ -1,12 +1,12 @@
 import {
   findChainClusters,
   findKeywordClusters,
-  computeAllKeywordEdges,
   computeStatMultiplicationEdges,
   computeHiddenScore,
   computeSpiritFeasibility,
   generateClusterDescription,
   IElement,
+  ISynergyEdge,
 } from '@precursor/engine';
 import { Element } from '../models/element.model';
 import { SynergyEdge } from '../models/synergy-edge.model';
@@ -72,12 +72,31 @@ export async function analyzeClusters(): Promise<void> {
   // Discover clusters from condition chains
   const partialClusters = findChainClusters(conditionEdges, elementMap, 3);
 
-  // Find keyword and stat clusters — triangles preferred over isolated pairs.
-  const keywordEdges = computeAllKeywordEdges(elements).filter(e => e.weight >= 0.1);
+  // Load pre-computed keyword edges from DB (written by compute-edges job).
+  // This avoids O(n²) recomputation here and uses the full edge set including
+  // lower-weight edges (0.075–0.1) that the hub algorithm needs.
+  const keywordEdgeDocs = await SynergyEdge.find({
+    patch_version: PATCH_VERSION,
+    edge_type: 'keyword_overlap',
+  }).lean();
+
+  const keywordEdges = keywordEdgeDocs.map(e => ({
+    _id: e._id as unknown as import('mongodb').ObjectId,
+    element_a: e.element_a as unknown as import('mongodb').ObjectId,
+    element_b: e.element_b as unknown as import('mongodb').ObjectId,
+    edge_type: e.edge_type as import('@precursor/engine').EdgeType,
+    link: e.link,
+    weight: e.weight,
+    patch_version: e.patch_version,
+    computed_at: e.computed_at,
+  })) as ISynergyEdge[];
+
   const statEdges = computeStatMultiplicationEdges(elements).filter(e => e.weight >= 0.1);
 
   const keywordClusters = findKeywordClusters(keywordEdges, elementMap, 0.5);
   const statClusters = findKeywordClusters(statEdges, elementMap, 0.4);
+
+  logger.info({ keywordEdgesLoaded: keywordEdges.length }, 'Keyword edges loaded from DB');
 
   logger.info({ keywordClusters: keywordClusters.length, statClusters: statClusters.length, conditionClusters: partialClusters.length }, 'Cluster counts by type');
 

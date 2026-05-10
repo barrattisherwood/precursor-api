@@ -104,10 +104,21 @@ export async function analyzeClusters(): Promise<void> {
   const allPartial = [...partialClusters, ...keywordClusters, ...statClusters];
   logger.info({ count: allPartial.length }, 'Partial clusters discovered');
 
+  // Filter out low-quality clusters: item affixes are mutually exclusive per slot,
+  // so a cluster dominated by them is noise rather than a build synergy.
+  const MAX_ITEM_AFFIXES = 2;
+  const filtered = allPartial.filter(partial => {
+    const affixCount = partial.element_ids.filter(
+      (id: { toString(): string }) => elementMap.get(id.toString())?.facet === 'item_affix',
+    ).length;
+    return affixCount <= MAX_ITEM_AFFIXES;
+  });
+  logger.info({ before: allPartial.length, after: filtered.length, dropped: allPartial.length - filtered.length }, 'Clusters after facet-diversity filter');
+
   // Score and persist
   const ops = [];
 
-  for (const partial of allPartial) {
+  for (const partial of filtered) {
     const elementIds = [...partial.element_ids.map((id: { toString(): string }) => id.toString())].sort();
     const clusterKey = elementIds.join(':');
 
@@ -187,9 +198,30 @@ export async function analyzeClusters(): Promise<void> {
     const result = await SynergyCluster.bulkWrite(ops);
     logger.info(
       { upserted: result.upsertedCount, modified: result.modifiedCount },
-      'Cluster analysis complete',
+      'Cluster upsert complete',
     );
   } else {
     logger.warn('No clusters found to persist');
+  }
+
+  // Deactivate only the clusters that failed the filter (small set — excess-affix clusters).
+  // Using $in on the rejected keys rather than $nin on all valid keys avoids a huge query.
+  const rejectedKeys = allPartial
+    .filter(partial => {
+      const affixCount = partial.element_ids.filter(
+        (id: { toString(): string }) => elementMap.get(id.toString())?.facet === 'item_affix',
+      ).length;
+      return affixCount > MAX_ITEM_AFFIXES;
+    })
+    .map(partial =>
+      [...partial.element_ids.map((id: { toString(): string }) => id.toString())].sort().join(':'),
+    );
+
+  if (rejectedKeys.length > 0) {
+    const deactivated = await SynergyCluster.updateMany(
+      { patch_version: PATCH_VERSION, active: true, cluster_key: { $in: rejectedKeys } },
+      { $set: { active: false } },
+    );
+    logger.info({ deactivated: deactivated.modifiedCount }, 'Excess-affix clusters deactivated');
   }
 }

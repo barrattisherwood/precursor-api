@@ -42,6 +42,7 @@ function docToElement(doc: any): IElement {
 }
 
 export async function analyzeClusters(): Promise<void> {
+  const jobStartTime = new Date();
   logger.info({ patchVersion: PATCH_VERSION }, 'Starting cluster analysis');
 
   const elementDocs = await Element.find({ patch_version: PATCH_VERSION }).lean();
@@ -243,19 +244,12 @@ export async function analyzeClusters(): Promise<void> {
     logger.warn('No clusters found to persist');
   }
 
-  // Deactivate clusters that failed quality filters. Using $in on the rejected keys
-  // (small set) rather than $nin on all valid keys avoids a massive query.
-  const rejectedKeys = allPartial
-    .filter(partial => !isQualityCluster(partial))
-    .map(partial =>
-      [...partial.element_ids.map((id: { toString(): string }) => id.toString())].sort().join(':'),
-    );
-
-  if (rejectedKeys.length > 0) {
-    const deactivated = await SynergyCluster.updateMany(
-      { patch_version: PATCH_VERSION, active: true, cluster_key: { $in: rejectedKeys } },
-      { $set: { active: false } },
-    );
-    logger.info({ deactivated: deactivated.modifiedCount }, 'Low-quality clusters deactivated');
-  }
+  // Deactivate any cluster not touched by this run — covers stale clusters from previous
+  // algorithm configs (e.g. old maxSpokesPerHub=8 clusters) and filtered-out ones.
+  // computed_at < jobStartTime means the upsert loop didn't reach it this run.
+  const deactivated = await SynergyCluster.updateMany(
+    { patch_version: PATCH_VERSION, active: true, computed_at: { $lt: jobStartTime } },
+    { $set: { active: false } },
+  );
+  logger.info({ deactivated: deactivated.modifiedCount }, 'Stale/filtered clusters deactivated');
 }

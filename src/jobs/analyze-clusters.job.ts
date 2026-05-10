@@ -70,6 +70,17 @@ export async function analyzeClusters(): Promise<void> {
   const latestSnapshot = await LadderSnapshot.findOne().sort({ captured_at: -1 });
   const ladderSample = latestSnapshot?.sample_size ?? 1;
 
+  // Load all build instances once — avoids one countDocuments query per cluster (was O(n) DB hits)
+  const buildInstanceDocs = await BuildInstance.find({}, { active_elements: 1 }).lean();
+  const instanceElementSets = buildInstanceDocs.map(
+    bi => new Set((bi.active_elements as Types.ObjectId[]).map(id => id.toString())),
+  );
+  logger.info({ buildInstances: instanceElementSets.length }, 'Build instances loaded for usage counting');
+
+  function countUsage(elementIds: string[]): number {
+    return instanceElementSets.filter(set => elementIds.every(id => set.has(id))).length;
+  }
+
   // Discover clusters from condition chains
   const partialClusters = findChainClusters(conditionEdges, elementMap, 3);
 
@@ -149,10 +160,7 @@ export async function analyzeClusters(): Promise<void> {
     const elementIds = [...partial.element_ids.map((id: { toString(): string }) => id.toString())].sort();
     const clusterKey = elementIds.join(':');
 
-    // Count how many ladder builds contain ALL elements in this cluster
-    const usageCount = await BuildInstance.countDocuments({
-      active_elements: { $all: elementIds.map((id: string) => new Types.ObjectId(id)) },
-    });
+    const usageCount = countUsage(elementIds);
 
     const hiddenScore = computeHiddenScore(
       partial.theoretical_score,

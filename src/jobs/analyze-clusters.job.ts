@@ -94,8 +94,9 @@ export async function analyzeClusters(): Promise<void> {
 
   const statEdges = computeStatMultiplicationEdges(elements).filter(e => e.weight >= 0.1);
 
-  const keywordClusters = findKeywordClusters(keywordEdges, elementMap, 0.5);
-  const statClusters = findKeywordClusters(statEdges, elementMap, 0.4);
+  // maxSpokesPerHub capped at 5: clusters of 9 elements (hub + 8 spokes) aren't equippable builds
+  const keywordClusters = findKeywordClusters(keywordEdges, elementMap, 0.5, 5);
+  const statClusters = findKeywordClusters(statEdges, elementMap, 0.4, 5);
 
   logger.info({ keywordEdgesLoaded: keywordEdges.length, conditionEdgesLoaded: conditionEdgeDocs.length, statEdgesComputed: statEdges.length }, 'Edges loaded');
 
@@ -104,16 +105,42 @@ export async function analyzeClusters(): Promise<void> {
   const allPartial = [...partialClusters, ...keywordClusters, ...statClusters];
   logger.info({ count: allPartial.length }, 'Partial clusters discovered');
 
-  // Filter out low-quality clusters: item affixes are mutually exclusive per slot,
-  // so a cluster dominated by them is noise rather than a build synergy.
   const MAX_ITEM_AFFIXES = 2;
-  const filtered = allPartial.filter(partial => {
-    const affixCount = partial.element_ids.filter(
-      (id: { toString(): string }) => elementMap.get(id.toString())?.facet === 'item_affix',
-    ).length;
-    return affixCount <= MAX_ITEM_AFFIXES;
-  });
-  logger.info({ before: allPartial.length, after: filtered.length, dropped: allPartial.length - filtered.length }, 'Clusters after facet-diversity filter');
+  const MAX_UNIQUE_ITEMS = 3;
+
+  function isQualityCluster(partial: typeof allPartial[0]): boolean {
+    const clusterEls = partial.element_ids
+      .map((id: { toString(): string }) => elementMap.get(id.toString()))
+      .filter(Boolean) as IElement[];
+
+    // Item affixes are mutually exclusive per slot — more than 2 is noise
+    if (clusterEls.filter(e => e.facet === 'item_affix').length > MAX_ITEM_AFFIXES) return false;
+
+    // More than 3 unique items sharing a keyword is alternatives, not synergy
+    if (clusterEls.filter(e => e.facet === 'unique_item').length > MAX_UNIQUE_ITEMS) return false;
+
+    // Clusters of 3+ must span at least 2 facet types to represent a real build combo
+    if (clusterEls.length >= 3) {
+      const facets = new Set(clusterEls.map(e => e.facet));
+      if (facets.size < 2) return false;
+    }
+
+    // Support gems must be link-compatible with at least one skill gem in the cluster
+    const skillGems = clusterEls.filter(e => e.facet === 'skill_gem');
+    for (const support of clusterEls.filter(e => e.facet === 'support_gem')) {
+      const restricted = support.meta.support_restricted_to;
+      if (!restricted || restricted.length === 0) continue;
+      const canLink = skillGems.some(skill =>
+        restricted.some(tag => skill.meta.gem_tags?.includes(tag)),
+      );
+      if (!canLink) return false;
+    }
+
+    return true;
+  }
+
+  const filtered = allPartial.filter(isQualityCluster);
+  logger.info({ before: allPartial.length, after: filtered.length, dropped: allPartial.length - filtered.length }, 'Clusters after quality filter');
 
   // Score and persist
   const ops = [];
@@ -204,15 +231,10 @@ export async function analyzeClusters(): Promise<void> {
     logger.warn('No clusters found to persist');
   }
 
-  // Deactivate only the clusters that failed the filter (small set — excess-affix clusters).
-  // Using $in on the rejected keys rather than $nin on all valid keys avoids a huge query.
+  // Deactivate clusters that failed quality filters. Using $in on the rejected keys
+  // (small set) rather than $nin on all valid keys avoids a massive query.
   const rejectedKeys = allPartial
-    .filter(partial => {
-      const affixCount = partial.element_ids.filter(
-        (id: { toString(): string }) => elementMap.get(id.toString())?.facet === 'item_affix',
-      ).length;
-      return affixCount > MAX_ITEM_AFFIXES;
-    })
+    .filter(partial => !isQualityCluster(partial))
     .map(partial =>
       [...partial.element_ids.map((id: { toString(): string }) => id.toString())].sort().join(':'),
     );
@@ -222,6 +244,6 @@ export async function analyzeClusters(): Promise<void> {
       { patch_version: PATCH_VERSION, active: true, cluster_key: { $in: rejectedKeys } },
       { $set: { active: false } },
     );
-    logger.info({ deactivated: deactivated.modifiedCount }, 'Excess-affix clusters deactivated');
+    logger.info({ deactivated: deactivated.modifiedCount }, 'Low-quality clusters deactivated');
   }
 }

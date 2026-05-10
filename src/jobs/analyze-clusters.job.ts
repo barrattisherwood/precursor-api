@@ -47,6 +47,7 @@ export async function analyzeClusters(): Promise<void> {
   const elementDocs = await Element.find({ patch_version: PATCH_VERSION }).lean();
   const elements = elementDocs.map(docToElement);
   const elementMap = new Map(elements.map(e => [e._id.toString(), e]));
+  logger.info({ elementCount: elements.length }, 'Elements loaded');
 
   // Load condition edges from DB (already computed) for chain discovery
   const conditionEdgeDocs = await SynergyEdge.find({
@@ -96,7 +97,7 @@ export async function analyzeClusters(): Promise<void> {
   const keywordClusters = findKeywordClusters(keywordEdges, elementMap, 0.5);
   const statClusters = findKeywordClusters(statEdges, elementMap, 0.4);
 
-  logger.info({ keywordEdgesLoaded: keywordEdges.length }, 'Keyword edges loaded from DB');
+  logger.info({ keywordEdgesLoaded: keywordEdges.length, conditionEdgesLoaded: conditionEdgeDocs.length, statEdgesComputed: statEdges.length }, 'Edges loaded');
 
   logger.info({ keywordClusters: keywordClusters.length, statClusters: statClusters.length, conditionClusters: partialClusters.length }, 'Cluster counts by type');
 

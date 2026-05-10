@@ -12,6 +12,8 @@ import { matchClusters } from './match-clusters.job';
 import { gggApi } from '../adapters/ggg-api.adapter';
 import { connectDb } from '../app';
 import { Element } from '../models/element.model';
+import { SynergyEdge } from '../models/synergy-edge.model';
+import { SynergyCluster } from '../models/synergy-cluster.model';
 import { logger } from '../logger';
 
 Sentry.init({
@@ -74,7 +76,25 @@ async function main(): Promise<void> {
     .createServer((req, res) => {
       if (req.url === '/health') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ status: 'ok', build: '20260509' }));
+        res.end(JSON.stringify({ status: 'ok', build: '20260510' }));
+        return;
+      }
+
+      if (req.url === '/diagnostics' && req.method === 'GET') {
+        const pv = process.env.PATCH_VERSION ?? '0.1.0';
+        Promise.all([
+          Element.countDocuments({ patch_version: pv }),
+          SynergyEdge.countDocuments({ patch_version: pv, edge_type: 'keyword_overlap' }),
+          SynergyEdge.countDocuments({ patch_version: pv, edge_type: 'condition_chain' }),
+          SynergyCluster.countDocuments({ patch_version: pv, active: true }),
+          SynergyCluster.countDocuments({ patch_version: pv, active: true, tags: { $exists: true, $not: { $size: 0 } } }),
+        ]).then(([elements, kwEdges, condEdges, clusters, taggedClusters]) => {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ patch_version: pv, elements, kwEdges, condEdges, clusters, taggedClusters }));
+        }).catch(err => {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: String(err) }));
+        });
         return;
       }
 

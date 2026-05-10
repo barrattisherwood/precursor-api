@@ -118,6 +118,7 @@ export async function analyzeClusters(): Promise<void> {
 
   const MAX_ITEM_AFFIXES = 2;
   const MAX_UNIQUE_ITEMS = 3;
+  const MAX_SKILL_GEMS = 2;
 
   function isQualityCluster(partial: typeof allPartial[0]): boolean {
     const clusterEls = partial.element_ids
@@ -129,6 +130,9 @@ export async function analyzeClusters(): Promise<void> {
 
     // More than 3 unique items sharing a keyword is alternatives, not synergy
     if (clusterEls.filter(e => e.facet === 'unique_item').length > MAX_UNIQUE_ITEMS) return false;
+
+    // Builds use 1-2 active skills — 3+ skill gems means the algorithm matched on a broad keyword
+    if (clusterEls.filter(e => e.facet === 'skill_gem').length > MAX_SKILL_GEMS) return false;
 
     // Clusters of 3+ must span at least 2 facet types to represent a real build combo
     if (clusterEls.length >= 3) {

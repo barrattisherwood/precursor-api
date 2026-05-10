@@ -32,6 +32,31 @@ function docToElement(doc: any): IElement {
   };
 }
 
+const BATCH_SIZE = 500;
+
+async function flushEdges(edges: ReturnType<typeof computeAllKeywordEdges>): Promise<number> {
+  let inserted = 0;
+  for (let i = 0; i < edges.length; i += BATCH_SIZE) {
+    const batch = edges.slice(i, i + BATCH_SIZE);
+    const ops = batch.map(edge => ({
+      insertOne: {
+        document: {
+          element_a: new Types.ObjectId(edge.element_a.toString()),
+          element_b: new Types.ObjectId(edge.element_b.toString()),
+          edge_type: edge.edge_type,
+          link: edge.link,
+          weight: edge.weight,
+          patch_version: edge.patch_version,
+          computed_at: edge.computed_at,
+        },
+      },
+    }));
+    const result = await SynergyEdge.bulkWrite(ops);
+    inserted += result.insertedCount;
+  }
+  return inserted;
+}
+
 export async function computeEdges(patchVersion: string): Promise<void> {
   logger.info({ patchVersion }, 'Starting edge computation');
 
@@ -39,30 +64,24 @@ export async function computeEdges(patchVersion: string): Promise<void> {
   const elements = docs.map(docToElement);
   logger.info({ count: elements.length }, 'Elements loaded for edge computation');
 
-  const keywordEdges = computeAllKeywordEdges(elements);
-  const conditionEdges = computeConditionEdges(elements);
-  const statEdges = computeStatMultiplicationEdges(elements);
-
-  const allEdges = [...keywordEdges, ...conditionEdges, ...statEdges];
-  logger.info({ count: allEdges.length }, 'Edges computed');
-
-  // Delete stale edges for this patch before reinserting
+  // Delete stale edges before reinserting
   await SynergyEdge.deleteMany({ patch_version: patchVersion });
+  logger.info('Stale edges deleted');
 
-  const ops = allEdges.map(edge => ({
-    insertOne: {
-      document: {
-        element_a: new Types.ObjectId(edge.element_a.toString()),
-        element_b: new Types.ObjectId(edge.element_b.toString()),
-        edge_type: edge.edge_type,
-        link: edge.link,
-        weight: edge.weight,
-        patch_version: edge.patch_version,
-        computed_at: edge.computed_at,
-      },
-    },
-  }));
+  // Compute and flush each type separately to avoid holding all edges in memory
+  const keywordEdges = computeAllKeywordEdges(elements);
+  logger.info({ count: keywordEdges.length }, 'Keyword edges computed');
+  const kwInserted = await flushEdges(keywordEdges);
+  logger.info({ inserted: kwInserted }, 'Keyword edges written');
 
-  const result = await SynergyEdge.bulkWrite(ops);
-  logger.info({ inserted: result.insertedCount }, 'Edge computation complete');
+  const conditionEdges = computeConditionEdges(elements);
+  logger.info({ count: conditionEdges.length }, 'Condition edges computed');
+  const condInserted = await flushEdges(conditionEdges);
+  logger.info({ inserted: condInserted }, 'Condition edges written');
+
+  const statEdges = computeStatMultiplicationEdges(elements);
+  logger.info({ count: statEdges.length }, 'Stat edges computed');
+  const statInserted = await flushEdges(statEdges);
+
+  logger.info({ kwInserted, condInserted, statInserted }, 'Edge computation complete');
 }

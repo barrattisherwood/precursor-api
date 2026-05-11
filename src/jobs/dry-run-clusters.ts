@@ -81,10 +81,14 @@ export interface DryRunResult {
   stat_edges: {
     computed: number;
     above_threshold: number;
-    weight_min: number;
-    weight_max: number;
-    weight_avg: number;
-  } | null;
+    modifier_type_counts: Record<string, number>;
+    more_stat_ids_sample: string[];
+    shared_stat_ids_count: number;
+    shared_stat_ids_sample: string[];
+    weight_min: number | null;
+    weight_max: number | null;
+    weight_avg: number | null;
+  };
 }
 
 function buildQualityFilter(params: Required<DryRunParams>) {
@@ -167,6 +171,19 @@ export async function dryRunClusters(overrides: DryRunParams = {}): Promise<DryR
       computed_at: e.computed_at,
     })) as ISynergyEdge[];
 
+  // Stat modifier diagnostic — runs before computeStatMultiplicationEdges to expose raw data
+  const modifierTypeCounts: Record<string, number> = {};
+  const moreStatIds = new Set<string>();
+  const increasedStatIds = new Set<string>();
+  for (const el of elements) {
+    for (const stat of el.stats) {
+      modifierTypeCounts[stat.modifier_type] = (modifierTypeCounts[stat.modifier_type] ?? 0) + 1;
+      if (stat.modifier_type === 'more') moreStatIds.add(stat.stat_id);
+      if (stat.modifier_type === 'increased') increasedStatIds.add(stat.stat_id);
+    }
+  }
+  const sharedStatIds = [...moreStatIds].filter(id => increasedStatIds.has(id));
+
   const allStatEdges = computeStatMultiplicationEdges(elements);
   const statEdges = allStatEdges.filter(e => e.weight >= params.statEdgeWeightMin);
 
@@ -179,14 +196,17 @@ export async function dryRunClusters(overrides: DryRunParams = {}): Promise<DryR
     with_stats: elements.filter(e => e.stats.length > 0).length,
   };
 
-  // Stat edge weight distribution
-  const stat_edges = allStatEdges.length > 0 ? {
+  const stat_edges = {
     computed: allStatEdges.length,
     above_threshold: statEdges.length,
-    weight_min: Math.min(...allStatEdges.map(e => e.weight)),
-    weight_max: Math.max(...allStatEdges.map(e => e.weight)),
-    weight_avg: allStatEdges.reduce((s, e) => s + e.weight, 0) / allStatEdges.length,
-  } : null;
+    modifier_type_counts: modifierTypeCounts,
+    more_stat_ids_sample: [...moreStatIds].slice(0, 15),
+    shared_stat_ids_count: sharedStatIds.length,
+    shared_stat_ids_sample: sharedStatIds.slice(0, 10),
+    weight_min: allStatEdges.length > 0 ? Math.min(...allStatEdges.map(e => e.weight)) : null,
+    weight_max: allStatEdges.length > 0 ? Math.max(...allStatEdges.map(e => e.weight)) : null,
+    weight_avg: allStatEdges.length > 0 ? allStatEdges.reduce((s, e) => s + e.weight, 0) / allStatEdges.length : null,
+  };
 
   const partialClusters = findChainClusters(conditionEdges, elementMap, params.chainMinLength);
   const keywordClusters = findKeywordClusters(keywordEdges, elementMap, params.kwHubThreshold, params.maxSpokesPerHub);

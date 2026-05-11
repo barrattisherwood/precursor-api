@@ -135,12 +135,6 @@ export async function analyzeClusters(): Promise<void> {
     // Builds use 1-2 active skills — 3+ skill gems means the algorithm matched on a broad keyword
     if (clusterEls.filter(e => e.facet === 'skill_gem').length > MAX_SKILL_GEMS) return false;
 
-    // Clusters of 3+ must span at least 2 facet types to represent a real build combo
-    if (clusterEls.length >= 3) {
-      const facets = new Set(clusterEls.map(e => e.facet));
-      if (facets.size < 2) return false;
-    }
-
     // Support gems must be link-compatible with at least one skill gem in the cluster
     const skillGems = clusterEls.filter(e => e.facet === 'skill_gem');
     for (const support of clusterEls.filter(e => e.facet === 'support_gem')) {

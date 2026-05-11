@@ -139,13 +139,17 @@ export async function analyzeClusters(): Promise<void> {
     if (clusterEls.filter(e => e.facet === 'skill_gem').length > MAX_SKILL_GEMS) return 'skill_gems';
 
     const skillGems = clusterEls.filter(e => e.facet === 'skill_gem');
-    for (const support of clusterEls.filter(e => e.facet === 'support_gem')) {
-      const restricted = support.meta.support_restricted_to;
-      if (!restricted || restricted.length === 0) continue;
-      const canLink = skillGems.some(skill =>
-        restricted.some(tag => skill.meta.gem_tags?.includes(tag)),
-      );
-      if (!canLink) return 'support_linkability';
+    // Only check linkability when skill gems are present — a support+passive cluster
+    // is still valid even without a named skill gem (user provides one)
+    if (skillGems.length > 0) {
+      for (const support of clusterEls.filter(e => e.facet === 'support_gem')) {
+        const restricted = support.meta.support_restricted_to;
+        if (!restricted || restricted.length === 0) continue;
+        const canLink = skillGems.some(skill =>
+          restricted.some(tag => skill.meta.gem_tags?.includes(tag)),
+        );
+        if (!canLink) return 'support_linkability';
+      }
     }
 
     return null; // passes

@@ -101,13 +101,15 @@ function buildQualityFilter(params: Required<DryRunParams>) {
     if (clusterEls.filter(e => e.facet === 'skill_gem').length > params.maxSkillGems) return 'skill_gems';
 
     const skillGems = clusterEls.filter(e => e.facet === 'skill_gem');
-    for (const support of clusterEls.filter(e => e.facet === 'support_gem')) {
-      const restricted = support.meta.support_restricted_to;
-      if (!restricted || restricted.length === 0) continue;
-      const canLink = skillGems.some(skill =>
-        restricted.some(tag => skill.meta.gem_tags?.includes(tag)),
-      );
-      if (!canLink) return 'support_linkability';
+    if (skillGems.length > 0) {
+      for (const support of clusterEls.filter(e => e.facet === 'support_gem')) {
+        const restricted = support.meta.support_restricted_to;
+        if (!restricted || restricted.length === 0) continue;
+        const canLink = skillGems.some(skill =>
+          restricted.some(tag => skill.meta.gem_tags?.includes(tag)),
+        );
+        if (!canLink) return 'support_linkability';
+      }
     }
 
     return null;

@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { Element } from '../models/element.model';
 import { SynergyEdge } from '../models/synergy-edge.model';
+import { SynergyCluster } from '../models/synergy-cluster.model';
 import { cache } from '../middleware/cache';
 
 export const elementsRouter = Router();
@@ -20,6 +21,24 @@ elementsRouter.get('/search', cache(60), async (req: Request, res: Response) => 
     if (facet) query.facet = facet;
     const results = await Element.find(query).limit(20).lean();
     res.json(results);
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/elements/:id/clusters — top clusters containing this element, sorted by hidden_score
+elementsRouter.get('/:id/clusters', cache(300), async (req: Request, res: Response) => {
+  try {
+    const limit = Math.min(Number(req.query.limit ?? 12), 20);
+    const clusters = await SynergyCluster.find({
+      element_ids: req.params.id,
+      active: true,
+    })
+      .sort({ hidden_score: -1 })
+      .limit(limit)
+      .populate('element_ids')
+      .lean();
+    res.json({ clusters });
   } catch (err) {
     res.status(500).json({ error: 'Internal server error' });
   }

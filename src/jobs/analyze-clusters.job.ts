@@ -121,21 +121,15 @@ export async function analyzeClusters(): Promise<void> {
   const MAX_UNIQUE_ITEMS = 3;
   const MAX_SKILL_GEMS = 3;
 
-  function isQualityCluster(partial: typeof allPartial[0]): boolean {
+  function isQualityCluster(partial: typeof allPartial[0]): string | null {
     const clusterEls = partial.element_ids
       .map((id: { toString(): string }) => elementMap.get(id.toString()))
       .filter(Boolean) as IElement[];
 
-    // Item affixes are mutually exclusive per slot — more than 2 is noise
-    if (clusterEls.filter(e => e.facet === 'item_affix').length > MAX_ITEM_AFFIXES) return false;
+    if (clusterEls.filter(e => e.facet === 'item_affix').length > MAX_ITEM_AFFIXES) return 'item_affixes';
+    if (clusterEls.filter(e => e.facet === 'unique_item').length > MAX_UNIQUE_ITEMS) return 'unique_items';
+    if (clusterEls.filter(e => e.facet === 'skill_gem').length > MAX_SKILL_GEMS) return 'skill_gems';
 
-    // More than 3 unique items sharing a keyword is alternatives, not synergy
-    if (clusterEls.filter(e => e.facet === 'unique_item').length > MAX_UNIQUE_ITEMS) return false;
-
-    // Builds use 1-2 active skills — 3+ skill gems means the algorithm matched on a broad keyword
-    if (clusterEls.filter(e => e.facet === 'skill_gem').length > MAX_SKILL_GEMS) return false;
-
-    // Support gems must be link-compatible with at least one skill gem in the cluster
     const skillGems = clusterEls.filter(e => e.facet === 'skill_gem');
     for (const support of clusterEls.filter(e => e.facet === 'support_gem')) {
       const restricted = support.meta.support_restricted_to;
@@ -143,14 +137,22 @@ export async function analyzeClusters(): Promise<void> {
       const canLink = skillGems.some(skill =>
         restricted.some(tag => skill.meta.gem_tags?.includes(tag)),
       );
-      if (!canLink) return false;
+      if (!canLink) return 'support_linkability';
     }
 
-    return true;
+    return null; // passes
   }
 
-  const filtered = allPartial.filter(isQualityCluster);
-  logger.info({ before: allPartial.length, after: filtered.length, dropped: allPartial.length - filtered.length }, 'Clusters after quality filter');
+  const rejectionStats: Record<string, number> = {};
+  const filtered = allPartial.filter(partial => {
+    const reason = isQualityCluster(partial);
+    if (reason) rejectionStats[reason] = (rejectionStats[reason] ?? 0) + 1;
+    return reason === null;
+  });
+  logger.info(
+    { before: allPartial.length, after: filtered.length, dropped: allPartial.length - filtered.length, rejections: rejectionStats },
+    'Clusters after quality filter',
+  );
 
   // Score and persist
   const ops = [];

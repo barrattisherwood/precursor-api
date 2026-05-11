@@ -9,6 +9,7 @@ import { snapshotLadder } from './snapshot-ladder.job';
 import { analyzeClusters } from './analyze-clusters.job';
 import { snapshotEconomy } from './snapshot-economy.job';
 import { matchClusters } from './match-clusters.job';
+import { dryRunClusters, DryRunParams } from './dry-run-clusters';
 import { gggApi } from '../adapters/ggg-api.adapter';
 import { connectDb } from '../app';
 import { Element } from '../models/element.model';
@@ -88,12 +89,69 @@ async function main(): Promise<void> {
           SynergyEdge.countDocuments({ patch_version: pv, edge_type: 'condition_chain' }),
           SynergyCluster.countDocuments({ patch_version: pv, active: true }),
           SynergyCluster.countDocuments({ patch_version: pv, active: true, tags: { $exists: true, $not: { $size: 0 } } }),
-        ]).then(([elements, kwEdges, condEdges, clusters, taggedClusters]) => {
+          // size distribution: how many clusters have 2, 3, 4, 5, 6+ elements
+          SynergyCluster.aggregate([
+            { $match: { patch_version: pv, active: true } },
+            { $project: { size: { $size: '$element_ids' } } },
+            { $bucket: { groupBy: '$size', boundaries: [2, 3, 4, 5, 6, 100], default: '6+', output: { count: { $sum: 1 } } } },
+          ]),
+          // top 10 tags by cluster count
+          SynergyCluster.aggregate([
+            { $match: { patch_version: pv, active: true } },
+            { $unwind: '$tags' },
+            { $group: { _id: '$tags', count: { $sum: 1 } } },
+            { $sort: { count: -1 } },
+            { $limit: 10 },
+          ]),
+          // avg scores
+          SynergyCluster.aggregate([
+            { $match: { patch_version: pv, active: true } },
+            { $group: { _id: null, avg_hidden: { $avg: '$hidden_score' }, avg_theoretical: { $avg: '$theoretical_score' }, avg_usage_pct: { $avg: '$usage_pct' } } },
+          ]),
+        ]).then(([elements, kwEdges, condEdges, clusters, taggedClusters, bySize, topTags, scores]) => {
           res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ patch_version: pv, elements, kwEdges, condEdges, clusters, taggedClusters }));
+          res.end(JSON.stringify({
+            patch_version: pv,
+            elements,
+            kwEdges,
+            condEdges,
+            clusters,
+            taggedClusters,
+            by_size: (bySize as { _id: number | string; count: number }[]).map(b => ({ size: b._id, count: b.count })),
+            top_tags: (topTags as { _id: string; count: number }[]).map(t => ({ tag: t._id, count: t.count })),
+            avg_scores: (scores as { avg_hidden: number; avg_theoretical: number; avg_usage_pct: number }[])[0] ?? null,
+          }));
         }).catch(err => {
           res.writeHead(500, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: String(err) }));
+        });
+        return;
+      }
+
+      if (req.url === '/trigger/analyze-clusters/dry-run' && req.method === 'POST') {
+        let body = '';
+        req.on('data', chunk => { body += chunk; });
+        req.on('end', () => {
+          let params: DryRunParams = {};
+          try {
+            if (body) params = JSON.parse(body) as DryRunParams;
+          } catch {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Invalid JSON body' }));
+            return;
+          }
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          // Stream a status line first so the caller knows the run started,
+          // then write the full result when done (newline-delimited JSON).
+          res.write(JSON.stringify({ status: 'running', params }) + '\n');
+          dryRunClusters(params)
+            .then(result => {
+              res.end(JSON.stringify({ status: 'done', result }) + '\n');
+            })
+            .catch(err => {
+              logger.error({ err }, 'Dry-run failed');
+              res.end(JSON.stringify({ status: 'error', error: String(err) }) + '\n');
+            });
         });
         return;
       }

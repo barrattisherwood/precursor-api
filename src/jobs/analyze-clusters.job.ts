@@ -1,6 +1,7 @@
 import {
   findChainClusters,
   findKeywordClusters,
+  findStatClusters,
   computeStatMultiplicationEdges,
   computeHiddenScore,
   computeSpiritFeasibility,
@@ -108,11 +109,18 @@ export async function analyzeClusters(): Promise<void> {
 
   // maxSpokesPerHub capped at 5: clusters of 9 elements (hub + 8 spokes) aren't equippable builds
   const keywordClusters = findKeywordClusters(keywordEdges, elementMap, 0.5, 5);
-  const statClusters = findKeywordClusters(statEdges, elementMap, 0.4, 5);
+  // stat clusters use their own hub algorithm: the 'more' multiplier element is the hub
+  const statClusters = findStatClusters(statEdges, elementMap, 0.25, 5);
 
   logger.info({ keywordEdgesLoaded: keywordEdges.length, conditionEdgesLoaded: conditionEdgeDocs.length, statEdgesComputed: statEdges.length }, 'Edges loaded');
 
   logger.info({ keywordClusters: keywordClusters.length, statClusters: statClusters.length, conditionClusters: partialClusters.length }, 'Cluster counts by type');
+  logger.info({
+    elementsWithProduces: elements.filter(e => e.produces.length > 0).length,
+    elementsWithScalesConditions: elements.filter(e => e.scales_conditions.length > 0).length,
+    elementsWithScalesKeywords: elements.filter(e => e.scales_keywords.length > 0).length,
+    elementsWithStats: elements.filter(e => e.stats.length > 0).length,
+  }, 'Element field coverage');
 
   const allPartial = [...partialClusters, ...keywordClusters, ...statClusters];
   logger.info({ count: allPartial.length }, 'Partial clusters discovered');

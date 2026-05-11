@@ -1,6 +1,7 @@
 import {
   findChainClusters,
   findKeywordClusters,
+  findStatClusters,
   computeStatMultiplicationEdges,
   IElement,
   ISynergyEdge,
@@ -70,6 +71,20 @@ export interface DryRunResult {
   by_size: SizeBreakdown[];
   facet_coverage: FacetBreakdown[];
   top_tags: { tag: string; count: number }[];
+  element_field_coverage: {
+    total: number;
+    with_produces: number;
+    with_scales_conditions: number;
+    with_scales_keywords: number;
+    with_stats: number;
+  };
+  stat_edges: {
+    computed: number;
+    above_threshold: number;
+    weight_min: number;
+    weight_max: number;
+    weight_avg: number;
+  } | null;
 }
 
 function buildQualityFilter(params: Required<DryRunParams>) {
@@ -150,11 +165,30 @@ export async function dryRunClusters(overrides: DryRunParams = {}): Promise<DryR
       computed_at: e.computed_at,
     })) as ISynergyEdge[];
 
-  const statEdges = computeStatMultiplicationEdges(elements).filter(e => e.weight >= params.statEdgeWeightMin);
+  const allStatEdges = computeStatMultiplicationEdges(elements);
+  const statEdges = allStatEdges.filter(e => e.weight >= params.statEdgeWeightMin);
+
+  // Element field coverage — diagnose why condition chains / stat edges may be empty
+  const element_field_coverage = {
+    total: elements.length,
+    with_produces: elements.filter(e => e.produces.length > 0).length,
+    with_scales_conditions: elements.filter(e => e.scales_conditions.length > 0).length,
+    with_scales_keywords: elements.filter(e => e.scales_keywords.length > 0).length,
+    with_stats: elements.filter(e => e.stats.length > 0).length,
+  };
+
+  // Stat edge weight distribution
+  const stat_edges = allStatEdges.length > 0 ? {
+    computed: allStatEdges.length,
+    above_threshold: statEdges.length,
+    weight_min: Math.min(...allStatEdges.map(e => e.weight)),
+    weight_max: Math.max(...allStatEdges.map(e => e.weight)),
+    weight_avg: allStatEdges.reduce((s, e) => s + e.weight, 0) / allStatEdges.length,
+  } : null;
 
   const partialClusters = findChainClusters(conditionEdges, elementMap, params.chainMinLength);
   const keywordClusters = findKeywordClusters(keywordEdges, elementMap, params.kwHubThreshold, params.maxSpokesPerHub);
-  const statClusters = findKeywordClusters(statEdges, elementMap, params.statHubThreshold, params.maxSpokesPerHub);
+  const statClusters = findStatClusters(statEdges, elementMap, params.statHubThreshold, params.maxSpokesPerHub);
 
   const allPartial = [...partialClusters, ...keywordClusters, ...statClusters];
 
@@ -221,5 +255,7 @@ export async function dryRunClusters(overrides: DryRunParams = {}): Promise<DryR
     by_size,
     facet_coverage,
     top_tags,
+    element_field_coverage,
+    stat_edges,
   };
 }

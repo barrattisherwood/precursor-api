@@ -4,8 +4,18 @@ import { cache } from '../middleware/cache';
 
 export const clustersRouter = Router();
 
+// GET /api/clusters/tags — distinct tags across all active clusters
+clustersRouter.get('/tags', cache(3600), async (_req: Request, res: Response) => {
+  try {
+    const tags = await SynergyCluster.distinct('tags', { active: true });
+    res.json((tags as string[]).filter(Boolean).sort());
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // GET /api/clusters
-// Query: sort, facet, patch, spirit_feasible, league_scoped, combo_gated, limit, offset
+// Query: sort, facet, patch, spirit_feasible, league_scoped, combo_gated, min_elements, limit, offset
 clustersRouter.get('/', cache(300), async (req: Request, res: Response) => {
   try {
     const {
@@ -18,6 +28,7 @@ clustersRouter.get('/', cache(300), async (req: Request, res: Response) => {
       edge_type,
       element_id,
       tags,
+      min_elements,
       limit = '20',
       offset = '0',
     } = req.query;
@@ -33,6 +44,11 @@ clustersRouter.get('/', cache(300), async (req: Request, res: Response) => {
     if (tags) {
       const tagList = String(tags).split(',').map(t => t.trim()).filter(Boolean);
       if (tagList.length > 0) query.tags = { $all: tagList };
+    }
+    if (min_elements) {
+      // Filter by array length: element_ids.N exists means length > N
+      const minN = Math.max(1, Number(min_elements));
+      query[`element_ids.${minN - 1}`] = { $exists: true };
     }
 
     const validSortFields = ['hidden_score', 'theoretical_score', 'usage_pct'];

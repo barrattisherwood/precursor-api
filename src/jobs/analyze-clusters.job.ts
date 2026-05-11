@@ -119,7 +119,7 @@ export async function analyzeClusters(): Promise<void> {
 
   const MAX_ITEM_AFFIXES = 2;
   const MAX_UNIQUE_ITEMS = 3;
-  const MAX_SKILL_GEMS = 2;
+  const MAX_SKILL_GEMS = 3;
 
   function isQualityCluster(partial: typeof allPartial[0]): boolean {
     const clusterEls = partial.element_ids

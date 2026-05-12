@@ -1,6 +1,8 @@
 import * as Sentry from '@sentry/node';
 import { logger } from '../logger';
 
+const runningJobs = new Set<string>();
+
 async function notifyDiscord(message: string, isAlert = false): Promise<void> {
   const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
   if (!webhookUrl) return;
@@ -22,6 +24,11 @@ async function notifyDiscord(message: string, isAlert = false): Promise<void> {
 }
 
 export async function runJob(name: string, fn: () => Promise<void>): Promise<void> {
+  if (runningJobs.has(name)) {
+    logger.warn({ job: name }, 'Job already running — skipping duplicate trigger');
+    return;
+  }
+  runningJobs.add(name);
   const startedAt = Date.now();
   logger.info({ job: name }, 'Job started');
 
@@ -38,5 +45,7 @@ export async function runJob(name: string, fn: () => Promise<void>): Promise<voi
       `🚨 **${name}** FAILED after ${(duration / 1000).toFixed(1)}s\n\`\`\`${String(err)}\`\`\``,
       true,
     );
+  } finally {
+    runningJobs.delete(name);
   }
 }

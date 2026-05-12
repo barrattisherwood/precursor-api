@@ -9,7 +9,7 @@
     "dev": "ts-node src/app.ts",
     "test": "jest",
     "test:coverage": "jest --coverage",
-    "jobs": "node dist/jobs/runner.js",
+    "jobs": "node --max-old-space-size=3072 dist/jobs/runner.js",
     "seed": "node dist/jobs/seed.js"
   },
   "dependencies": {

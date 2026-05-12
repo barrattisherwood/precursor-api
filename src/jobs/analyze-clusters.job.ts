@@ -109,10 +109,18 @@ export async function analyzeClusters(): Promise<void> {
   // maxSpokesPerHub capped at 5: clusters of 9 elements (hub + 8 spokes) aren't equippable builds
   const keywordClusters = findKeywordClusters(keywordEdges, elementMap, 0.5, 5);
 
+  // Free large edge arrays — no longer needed after cluster discovery
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (keywordEdgeDocs as any[]).length = 0;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (keywordEdges as any[]).length = 0;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (conditionEdgeDocs as any[]).length = 0;
+
   // Stat multiplication clusters (findStatClusters) are omitted: PoE2 RePoE data does not
   // expose "more" multiplier stat IDs in a form the algorithm can match, so it produces 0 edges.
 
-  logger.info({ keywordEdgesLoaded: keywordEdges.length, conditionEdgesLoaded: conditionEdgeDocs.length }, 'Edges loaded');
+  logger.info({ keywordClustersFound: keywordClusters.length, conditionClustersFound: partialClusters.length }, 'Edges loaded and freed');
 
   logger.info({ keywordClusters: keywordClusters.length, conditionClusters: partialClusters.length }, 'Cluster counts by type');
   logger.info({
@@ -136,8 +144,20 @@ export async function analyzeClusters(): Promise<void> {
     'Clusters after quality filter',
   );
 
-  // Score and persist
-  const ops = [];
+  // Score and persist in batches to avoid accumulating 150k+ ops in memory at once
+  const WRITE_BATCH = 2000;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let ops: any[] = [];
+  let totalUpserted = 0;
+  let totalModified = 0;
+
+  async function flushOps(): Promise<void> {
+    if (ops.length === 0) return;
+    const result = await SynergyCluster.bulkWrite(ops);
+    totalUpserted += result.upsertedCount;
+    totalModified += result.modifiedCount;
+    ops = [];
+  }
 
   for (const partial of filtered) {
     const elementIds = [...partial.element_ids.map((id: { toString(): string }) => id.toString())].sort();
@@ -210,14 +230,14 @@ export async function analyzeClusters(): Promise<void> {
         upsert: true,
       },
     });
+
+    if (ops.length >= WRITE_BATCH) await flushOps();
   }
 
-  if (ops.length > 0) {
-    const result = await SynergyCluster.bulkWrite(ops);
-    logger.info(
-      { upserted: result.upsertedCount, modified: result.modifiedCount },
-      'Cluster upsert complete',
-    );
+  await flushOps();
+
+  if (totalUpserted + totalModified > 0) {
+    logger.info({ upserted: totalUpserted, modified: totalModified }, 'Cluster upsert complete');
   } else {
     logger.warn('No clusters found to persist');
   }

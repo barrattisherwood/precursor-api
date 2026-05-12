@@ -65,6 +65,15 @@ export function isQualityCluster(
   );
   if (!hasConditionEdge && clusterEls.filter(e => e.facet === 'passive_node').length > MAX_PASSIVES) return 'too_many_passives';
 
+  // A character can only have one ascendancy class — reject clusters mixing nodes from different classes.
+  const ascendancyClasses = new Set(
+    clusterEls
+      .filter(e => e.facet === 'ascendancy_node')
+      .map(e => e.meta.ascendancy_class as string | undefined)
+      .filter(Boolean),
+  );
+  if (ascendancyClasses.size > 1) return 'ascendancy_conflict';
+
   // Weapon type incompatibility
   const weaponGroups = new Set<string>();
   for (const el of clusterEls) {

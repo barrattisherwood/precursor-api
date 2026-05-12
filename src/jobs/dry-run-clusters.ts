@@ -129,7 +129,7 @@ export async function dryRunClusters(overrides: DryRunParams = {}): Promise<DryR
     statHubThreshold: overrides.statHubThreshold ?? 0.4,
     maxSpokesPerHub: overrides.maxSpokesPerHub ?? 5,
     chainMinLength: overrides.chainMinLength ?? 3,
-    kwEdgeWeightMin: overrides.kwEdgeWeightMin ?? 0,
+    kwEdgeWeightMin: overrides.kwEdgeWeightMin ?? 0.05,
     statEdgeWeightMin: overrides.statEdgeWeightMin ?? 0.1,
   };
 
@@ -156,10 +156,10 @@ export async function dryRunClusters(overrides: DryRunParams = {}): Promise<DryR
   const keywordEdgeDocs = await SynergyEdge.find({
     patch_version: PATCH_VERSION,
     edge_type: 'keyword_overlap',
+    weight: { $gte: params.kwEdgeWeightMin },
   }).lean();
 
   const keywordEdges = keywordEdgeDocs
-    .filter(e => e.weight >= params.kwEdgeWeightMin)
     .map(e => ({
       _id: e._id as unknown as import('mongodb').ObjectId,
       element_a: e.element_a as unknown as import('mongodb').ObjectId,

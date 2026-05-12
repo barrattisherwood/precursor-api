@@ -13,7 +13,7 @@
     "seed": "node dist/jobs/seed.js"
   },
   "dependencies": {
-    "@precursor/engine": "file:precursor-engine-0.1.7.tgz",
+    "@precursor/engine": "file:precursor-engine-0.1.8.tgz",
     "@sentry/node": "^8.0.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",

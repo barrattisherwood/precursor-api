@@ -15,11 +15,31 @@ clustersRouter.get('/tags', cache(3600), async (_req: Request, res: Response) =>
   }
 });
 
-// GET /api/clusters/ascendancies — distinct ascendancy class names from all ascendancy_node elements
+// GET /api/clusters/ascendancies — ascendancy classes grouped by base class (PoE2 only)
 clustersRouter.get('/ascendancies', cache(3600), async (_req: Request, res: Response) => {
   try {
-    const classes = await Element.distinct('meta.ascendancy_class', { facet: 'ascendancy_node' });
-    res.json((classes as string[]).filter(Boolean).sort());
+    const docs = await Element.find(
+      { facet: 'ascendancy_node', 'meta.base_class': { $exists: true, $ne: null } },
+      { 'meta.ascendancy_class': 1, 'meta.base_class': 1, _id: 0 },
+    ).lean();
+
+    const groupMap = new Map<string, Set<string>>();
+    for (const doc of docs) {
+      const baseClass = doc.meta.base_class as string | undefined;
+      const ascClass = doc.meta.ascendancy_class as string | undefined;
+      if (!baseClass || !ascClass) continue;
+      if (!groupMap.has(baseClass)) groupMap.set(baseClass, new Set());
+      groupMap.get(baseClass)!.add(ascClass);
+    }
+
+    const result = [...groupMap.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([base_class, ascSet]) => ({
+        base_class,
+        ascendancies: [...ascSet].sort(),
+      }));
+
+    res.json(result);
   } catch (err) {
     res.status(500).json({ error: 'Internal server error' });
   }

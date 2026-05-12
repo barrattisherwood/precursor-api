@@ -16,6 +16,7 @@ import { Element } from '../models/element.model';
 import { SynergyEdge } from '../models/synergy-edge.model';
 import { SynergyCluster } from '../models/synergy-cluster.model';
 import { logger } from '../logger';
+import { computeStatMultiplicationEdges } from '@precursor/engine';
 
 Sentry.init({
   dsn: process.env.SENTRY_DSN,
@@ -120,6 +121,56 @@ async function main(): Promise<void> {
             by_size: (bySize as { _id: number | string; count: number }[]).map(b => ({ size: b._id, count: b.count })),
             top_tags: (topTags as { _id: string; count: number }[]).map(t => ({ tag: t._id, count: t.count })),
             avg_scores: (scores as { avg_hidden: number; avg_theoretical: number; avg_usage_pct: number }[])[0] ?? null,
+          }));
+        }).catch(err => {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: String(err) }));
+        });
+        return;
+      }
+
+      // Lightweight element field + stat modifier diagnostic — no cluster computation
+      if (req.url === '/diagnostics/elements' && req.method === 'GET') {
+        const pv = process.env.PATCH_VERSION ?? '0.1.0';
+        Element.find({ patch_version: pv }).lean().then(docs => {
+          const modifierTypeCounts: Record<string, number> = {};
+          const moreStatIds: string[] = [];
+          const increasedStatIds = new Set<string>();
+
+          for (const doc of docs) {
+            for (const stat of (doc.stats ?? []) as { stat_id: string; modifier_type: string }[]) {
+              modifierTypeCounts[stat.modifier_type] = (modifierTypeCounts[stat.modifier_type] ?? 0) + 1;
+              if (stat.modifier_type === 'more') moreStatIds.push(stat.stat_id);
+              if (stat.modifier_type === 'increased') increasedStatIds.add(stat.stat_id);
+            }
+          }
+
+          const moreSet = new Set(moreStatIds);
+          const sharedStatIds = [...moreSet].filter(id => increasedStatIds.has(id));
+
+          // Run stat multiplication in-memory to see edge count
+          const elements = docs.map((doc: Record<string, unknown>) => ({
+            _id: doc._id, source_id: doc.source_id, name: doc.name, facet: doc.facet,
+            meta: doc.meta, keywords: doc.keywords, produces: doc.produces, stats: doc.stats,
+            scales_keywords: doc.scales_keywords, scales_conditions: doc.scales_conditions,
+            scales_stats: doc.scales_stats, excluded_keywords: doc.excluded_keywords,
+            combo_required: doc.combo_required, combo_produces: doc.combo_produces,
+            patch_version: doc.patch_version, source: doc.source, last_updated: doc.last_updated,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          }) as any);
+          const statEdges = computeStatMultiplicationEdges(elements);
+
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            total_elements: docs.length,
+            modifier_type_counts: modifierTypeCounts,
+            more_stat_ids_count: moreStatIds.length,
+            more_stat_ids_sample: [...moreSet].slice(0, 20),
+            increased_stat_ids_count: increasedStatIds.size,
+            shared_stat_ids_count: sharedStatIds.length,
+            shared_stat_ids_sample: sharedStatIds.slice(0, 10),
+            stat_edges_computed: statEdges.length,
+            stat_edges_above_0_1: statEdges.filter(e => e.weight >= 0.1).length,
           }));
         }).catch(err => {
           res.writeHead(500, { 'Content-Type': 'application/json' });

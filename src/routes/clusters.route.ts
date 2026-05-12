@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { SynergyCluster } from '../models/synergy-cluster.model';
+import { Element } from '../models/element.model';
 import { cache } from '../middleware/cache';
 
 export const clustersRouter = Router();
@@ -9,6 +10,16 @@ clustersRouter.get('/tags', cache(3600), async (_req: Request, res: Response) =>
   try {
     const tags = await SynergyCluster.distinct('tags', { active: true });
     res.json((tags as string[]).filter(Boolean).sort());
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/clusters/ascendancies — distinct ascendancy class names from all ascendancy_node elements
+clustersRouter.get('/ascendancies', cache(3600), async (_req: Request, res: Response) => {
+  try {
+    const classes = await Element.distinct('meta.ascendancy_class', { facet: 'ascendancy_node' });
+    res.json((classes as string[]).filter(Boolean).sort());
   } catch (err) {
     res.status(500).json({ error: 'Internal server error' });
   }
@@ -27,6 +38,7 @@ clustersRouter.get('/', cache(300), async (req: Request, res: Response) => {
       combo_gated,
       edge_type,
       element_id,
+      ascendancy_class,
       tags,
       min_elements,
       limit = '20',
@@ -41,6 +53,13 @@ clustersRouter.get('/', cache(300), async (req: Request, res: Response) => {
     if (combo_gated === 'true') query.combo_gated = true;
     if (edge_type) query['edges.edge_type'] = edge_type;
     if (element_id) query.element_ids = element_id;
+    if (ascendancy_class) {
+      const ascNodes = await Element.find(
+        { facet: 'ascendancy_node', 'meta.ascendancy_class': ascendancy_class },
+        { _id: 1 },
+      ).lean();
+      query.element_ids = { $in: ascNodes.map(e => e._id) };
+    }
     if (tags) {
       const tagList = String(tags).split(',').map(t => t.trim()).filter(Boolean);
       if (tagList.length > 0) query.tags = { $all: tagList };

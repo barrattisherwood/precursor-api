@@ -129,7 +129,7 @@ export async function dryRunClusters(overrides: DryRunParams = {}): Promise<DryR
     statHubThreshold: overrides.statHubThreshold ?? 0.4,
     maxSpokesPerHub: overrides.maxSpokesPerHub ?? 5,
     chainMinLength: overrides.chainMinLength ?? 3,
-    kwEdgeWeightMin: overrides.kwEdgeWeightMin ?? 0.05,
+    kwEdgeWeightMin: overrides.kwEdgeWeightMin ?? 0.1,
     statEdgeWeightMin: overrides.statEdgeWeightMin ?? 0.1,
   };
 

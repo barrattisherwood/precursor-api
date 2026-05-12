@@ -88,10 +88,12 @@ export async function analyzeClusters(): Promise<void> {
 
   // Load pre-computed keyword edges from DB (written by compute-edges job).
   // This avoids O(n²) recomputation here and uses the full edge set including
-  // lower-weight edges (0.075–0.1) that the hub algorithm needs.
+  // Only load edges that can contribute to clusters: minHubWeight=0.25, minEdgeWeight=0.5.
+  // Edges below 0.1 can never form a hub spoke or standalone pair with current thresholds.
   const keywordEdgeDocs = await SynergyEdge.find({
     patch_version: PATCH_VERSION,
     edge_type: 'keyword_overlap',
+    weight: { $gte: 0.1 },
   }).lean();
 
   const keywordEdges = keywordEdgeDocs.map(e => ({

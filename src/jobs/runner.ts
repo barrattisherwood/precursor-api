@@ -18,10 +18,9 @@ import { SynergyCluster } from '../models/synergy-cluster.model';
 import { logger } from '../logger';
 import { computeStatMultiplicationEdges } from '@precursor/engine';
 
-Sentry.init({
-  dsn: process.env.SENTRY_DSN,
-  environment: process.env.NODE_ENV,
-});
+// Sentry is already initialised by app.ts (imported above via connectDb).
+// Calling Sentry.init() a second time sets up duplicate OTel instrumentation
+// which causes runaway span accumulation and OOM within minutes of startup.
 
 process.on('unhandledRejection', reason => {
   Sentry.captureException(reason);

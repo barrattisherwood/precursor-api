@@ -86,16 +86,16 @@ export async function analyzeClusters(): Promise<void> {
   const partialClusters = findChainClusters(conditionEdges, elementMap, 3);
 
   // Load pre-computed keyword edges from DB (written by compute-edges job).
-  // This avoids O(n²) recomputation here and uses the full edge set including
-  // Only load edges that can contribute to clusters: minHubWeight=0.25, minEdgeWeight=0.5.
-  // Edges below 0.1 can never form a hub spoke or standalone pair with current thresholds.
-  const keywordEdgeDocs = await SynergyEdge.find({
+  // Threshold 0.25 = minHubWeight (minEdgeWeight 0.5 × 0.5): edges below this are skipped
+  // entirely by findKeywordClusters so there is no point loading them.
+  const keywordEdgeRaw = await SynergyEdge.find({
     patch_version: PATCH_VERSION,
     edge_type: 'keyword_overlap',
-    weight: { $gte: 0.1 },
+    weight: { $gte: 0.25 },
   }).lean();
 
-  const keywordEdges = keywordEdgeDocs.map(e => ({
+  // Map to engine type and immediately drop the raw docs to free memory before cluster discovery.
+  const keywordEdges = keywordEdgeRaw.map(e => ({
     _id: e._id as unknown as import('mongodb').ObjectId,
     element_a: e.element_a as unknown as import('mongodb').ObjectId,
     element_b: e.element_b as unknown as import('mongodb').ObjectId,
@@ -105,13 +105,13 @@ export async function analyzeClusters(): Promise<void> {
     patch_version: e.patch_version,
     computed_at: e.computed_at,
   })) as ISynergyEdge[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (keywordEdgeRaw as any[]).length = 0;
 
   // maxSpokesPerHub capped at 5: clusters of 9 elements (hub + 8 spokes) aren't equippable builds
   const keywordClusters = findKeywordClusters(keywordEdges, elementMap, 0.5, 5);
 
   // Free large edge arrays — no longer needed after cluster discovery
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (keywordEdgeDocs as any[]).length = 0;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (keywordEdges as any[]).length = 0;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

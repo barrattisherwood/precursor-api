@@ -14,6 +14,7 @@ import { BuildInstance } from '../models/build-instance.model';
 import { LadderSnapshot } from '../models/ladder-snapshot.model';
 import { Types } from 'mongoose';
 import { logger } from '../logger';
+import { isQualityCluster } from './cluster-quality';
 
 const PATCH_VERSION = process.env.PATCH_VERSION ?? '0.1.0';
 
@@ -124,39 +125,9 @@ export async function analyzeClusters(): Promise<void> {
   const allPartial = [...partialClusters, ...keywordClusters];
   logger.info({ count: allPartial.length }, 'Partial clusters discovered');
 
-  const MAX_ITEM_AFFIXES = 2;
-  const MAX_UNIQUE_ITEMS = 3;
-  const MAX_SKILL_GEMS = 3;
-
-  function isQualityCluster(partial: typeof allPartial[0]): string | null {
-    const clusterEls = partial.element_ids
-      .map((id: { toString(): string }) => elementMap.get(id.toString()))
-      .filter(Boolean) as IElement[];
-
-    if (clusterEls.filter(e => e.facet === 'item_affix').length > MAX_ITEM_AFFIXES) return 'item_affixes';
-    if (clusterEls.filter(e => e.facet === 'unique_item').length > MAX_UNIQUE_ITEMS) return 'unique_items';
-    if (clusterEls.filter(e => e.facet === 'skill_gem').length > MAX_SKILL_GEMS) return 'skill_gems';
-
-    const skillGems = clusterEls.filter(e => e.facet === 'skill_gem');
-    // Only check linkability when skill gems are present — a support+passive cluster
-    // is still valid even without a named skill gem (user provides one)
-    if (skillGems.length > 0) {
-      for (const support of clusterEls.filter(e => e.facet === 'support_gem')) {
-        const restricted = support.meta.support_restricted_to;
-        if (!restricted || restricted.length === 0) continue;
-        const canLink = skillGems.some(skill =>
-          restricted.some(tag => skill.meta.gem_tags?.includes(tag)),
-        );
-        if (!canLink) return 'support_linkability';
-      }
-    }
-
-    return null; // passes
-  }
-
   const rejectionStats: Record<string, number> = {};
   const filtered = allPartial.filter(partial => {
-    const reason = isQualityCluster(partial);
+    const reason = isQualityCluster(partial, elementMap);
     if (reason) rejectionStats[reason] = (rejectionStats[reason] ?? 0) + 1;
     return reason === null;
   });

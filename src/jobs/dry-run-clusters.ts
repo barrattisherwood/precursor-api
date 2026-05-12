@@ -1,7 +1,6 @@
 import {
   findChainClusters,
   findKeywordClusters,
-  findStatClusters,
   computeStatMultiplicationEdges,
   IElement,
   ISynergyEdge,
@@ -9,6 +8,7 @@ import {
 import { Element } from '../models/element.model';
 import { SynergyEdge } from '../models/synergy-edge.model';
 import { Types } from 'mongoose';
+import { isQualityCluster } from './cluster-quality';
 
 const PATCH_VERSION = process.env.PATCH_VERSION ?? '0.1.0';
 
@@ -91,34 +91,6 @@ export interface DryRunResult {
   };
 }
 
-function buildQualityFilter(params: Required<DryRunParams>) {
-  return function isQualityCluster(
-    partial: { element_ids: { toString(): string }[]; edges: unknown[] },
-    elementMap: Map<string, IElement>,
-  ): string | null {
-    const clusterEls = partial.element_ids
-      .map(id => elementMap.get(id.toString()))
-      .filter(Boolean) as IElement[];
-
-    if (clusterEls.filter(e => e.facet === 'item_affix').length > params.maxItemAffixes) return 'item_affixes';
-    if (clusterEls.filter(e => e.facet === 'unique_item').length > params.maxUniqueItems) return 'unique_items';
-    if (clusterEls.filter(e => e.facet === 'skill_gem').length > params.maxSkillGems) return 'skill_gems';
-
-    const skillGems = clusterEls.filter(e => e.facet === 'skill_gem');
-    if (skillGems.length > 0) {
-      for (const support of clusterEls.filter(e => e.facet === 'support_gem')) {
-        const restricted = support.meta.support_restricted_to;
-        if (!restricted || restricted.length === 0) continue;
-        const canLink = skillGems.some(skill =>
-          restricted.some(tag => skill.meta.gem_tags?.includes(tag)),
-        );
-        if (!canLink) return 'support_linkability';
-      }
-    }
-
-    return null;
-  };
-}
 
 export async function dryRunClusters(overrides: DryRunParams = {}): Promise<DryRunResult> {
   const params: Required<DryRunParams> = {
@@ -210,15 +182,12 @@ export async function dryRunClusters(overrides: DryRunParams = {}): Promise<DryR
 
   const partialClusters = findChainClusters(conditionEdges, elementMap, params.chainMinLength);
   const keywordClusters = findKeywordClusters(keywordEdges, elementMap, params.kwHubThreshold, params.maxSpokesPerHub);
-  const statClusters = findStatClusters(statEdges, elementMap, params.statHubThreshold, params.maxSpokesPerHub);
 
-  const allPartial = [...partialClusters, ...keywordClusters, ...statClusters];
+  const allPartial = [...partialClusters, ...keywordClusters];
 
-  const isQuality = buildQualityFilter(params);
   const rejectionStats: Record<string, number> = {};
-
   const filtered = allPartial.filter(partial => {
-    const reason = isQuality(partial, elementMap);
+    const reason = isQualityCluster(partial, elementMap);
     if (reason) rejectionStats[reason] = (rejectionStats[reason] ?? 0) + 1;
     return reason === null;
   });
@@ -272,7 +241,7 @@ export async function dryRunClusters(overrides: DryRunParams = {}): Promise<DryR
     by_type: {
       condition_chains: partialClusters.length,
       keyword_hubs: keywordClusters.length,
-      stat_hubs: statClusters.length,
+      stat_hubs: 0,
     },
     by_size,
     facet_coverage,

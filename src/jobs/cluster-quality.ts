@@ -3,6 +3,7 @@ import { IElement } from '@precursor/engine';
 export const MAX_ITEM_AFFIXES = 2;
 export const MAX_UNIQUE_ITEMS = 3;
 export const MAX_SKILL_GEMS = 3;
+export const MAX_PASSIVES = 3;
 
 // Weapon groups: elements that require a specific weapon type equipped.
 // Two elements from incompatible groups can never appear in the same build.
@@ -46,7 +47,7 @@ function detectWeaponGroup(el: IElement): string | null {
  * Returns the rejection reason if the cluster fails quality checks, or null if it passes.
  */
 export function isQualityCluster(
-  partial: { element_ids: { toString(): string }[]; edges: unknown[] },
+  partial: { element_ids: { toString(): string }[]; edges: { edge_type: string }[] },
   elementMap: Map<string, IElement>,
 ): string | null {
   const clusterEls = partial.element_ids
@@ -56,6 +57,13 @@ export function isQualityCluster(
   if (clusterEls.filter(e => e.facet === 'item_affix').length > MAX_ITEM_AFFIXES)  return 'item_affixes';
   if (clusterEls.filter(e => e.facet === 'unique_item').length > MAX_UNIQUE_ITEMS) return 'unique_items';
   if (clusterEls.filter(e => e.facet === 'skill_gem').length > MAX_SKILL_GEMS)     return 'skill_gems';
+
+  // Cap passive-only keyword hubs: keyword overlap between passives isn't a build synergy.
+  // Exempt condition chains — a passive producing a condition that another passive scales is genuinely interesting.
+  const hasConditionEdge = partial.edges.some(
+    e => e.edge_type === 'condition_chain' || e.edge_type === 'condition_amplification',
+  );
+  if (!hasConditionEdge && clusterEls.filter(e => e.facet === 'passive_node').length > MAX_PASSIVES) return 'too_many_passives';
 
   // Weapon type incompatibility
   const weaponGroups = new Set<string>();

@@ -1,8 +1,6 @@
 import {
   findChainClusters,
   findKeywordClusters,
-  findStatClusters,
-  computeStatMultiplicationEdges,
   computeHiddenScore,
   computeSpiritFeasibility,
   generateClusterDescription,
@@ -107,16 +105,15 @@ export async function analyzeClusters(): Promise<void> {
     computed_at: e.computed_at,
   })) as ISynergyEdge[];
 
-  const statEdges = computeStatMultiplicationEdges(elements).filter(e => e.weight >= 0.1);
-
   // maxSpokesPerHub capped at 5: clusters of 9 elements (hub + 8 spokes) aren't equippable builds
   const keywordClusters = findKeywordClusters(keywordEdges, elementMap, 0.5, 5);
-  // stat clusters use their own hub algorithm: the 'more' multiplier element is the hub
-  const statClusters = findStatClusters(statEdges, elementMap, 0.25, 5);
 
-  logger.info({ keywordEdgesLoaded: keywordEdges.length, conditionEdgesLoaded: conditionEdgeDocs.length, statEdgesComputed: statEdges.length }, 'Edges loaded');
+  // Stat multiplication clusters (findStatClusters) are omitted: PoE2 RePoE data does not
+  // expose "more" multiplier stat IDs in a form the algorithm can match, so it produces 0 edges.
 
-  logger.info({ keywordClusters: keywordClusters.length, statClusters: statClusters.length, conditionClusters: partialClusters.length }, 'Cluster counts by type');
+  logger.info({ keywordEdgesLoaded: keywordEdges.length, conditionEdgesLoaded: conditionEdgeDocs.length }, 'Edges loaded');
+
+  logger.info({ keywordClusters: keywordClusters.length, conditionClusters: partialClusters.length }, 'Cluster counts by type');
   logger.info({
     elementsWithProduces: elements.filter(e => e.produces.length > 0).length,
     elementsWithScalesConditions: elements.filter(e => e.scales_conditions.length > 0).length,
@@ -124,7 +121,7 @@ export async function analyzeClusters(): Promise<void> {
     elementsWithStats: elements.filter(e => e.stats.length > 0).length,
   }, 'Element field coverage');
 
-  const allPartial = [...partialClusters, ...keywordClusters, ...statClusters];
+  const allPartial = [...partialClusters, ...keywordClusters];
   logger.info({ count: allPartial.length }, 'Partial clusters discovered');
 
   const MAX_ITEM_AFFIXES = 2;

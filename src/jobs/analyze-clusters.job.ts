@@ -71,11 +71,16 @@ export async function analyzeClusters(): Promise<void> {
   const latestSnapshot = await LadderSnapshot.findOne().sort({ captured_at: -1 });
   const ladderSample = latestSnapshot?.sample_size ?? 1;
 
-  // Load all build instances once — avoids one countDocuments query per cluster (was O(n) DB hits)
-  const buildInstanceDocs = await BuildInstance.find({}, { active_elements: 1 }).lean();
+  // Load only the latest snapshot's build instances — loading all past snapshots unboundedly
+  // grows memory across runs and produces incorrect usage_pct (divides by latest sample_size).
+  const buildInstanceFilter = latestSnapshot ? { snapshot_id: latestSnapshot._id } : {};
+  const buildInstanceDocs = await BuildInstance.find(buildInstanceFilter, { active_elements: 1 }).lean();
   const instanceElementSets = buildInstanceDocs.map(
     bi => new Set((bi.active_elements as Types.ObjectId[]).map(id => id.toString())),
   );
+  // Free raw docs immediately — instanceElementSets holds everything we need.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (buildInstanceDocs as any[]).length = 0;
   logger.info({ buildInstances: instanceElementSets.length }, 'Build instances loaded for usage counting');
 
   function countUsage(elementIds: string[]): number {

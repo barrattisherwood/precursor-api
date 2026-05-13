@@ -1,11 +1,11 @@
 import {
-  computeAllKeywordEdges,
+  computeKeywordOverlapWeight,
   computeConditionEdges,
   computeStatMultiplicationEdges,
 } from '@precursor/engine';
-import { Element, IElementDoc } from '../models/element.model';
+import { Element } from '../models/element.model';
 import { SynergyEdge } from '../models/synergy-edge.model';
-import { IElement } from '@precursor/engine';
+import { IElement, ISynergyEdge } from '@precursor/engine';
 import { Types } from 'mongoose';
 import { logger } from '../logger';
 
@@ -34,7 +34,7 @@ function docToElement(doc: any): IElement {
 
 const BATCH_SIZE = 500;
 
-async function flushEdges(edges: ReturnType<typeof computeAllKeywordEdges>): Promise<number> {
+async function flushEdges(edges: ISynergyEdge[]): Promise<number> {
   let inserted = 0;
   for (let i = 0; i < edges.length; i += BATCH_SIZE) {
     const batch = edges.slice(i, i + BATCH_SIZE);
@@ -68,11 +68,50 @@ export async function computeEdges(patchVersion: string): Promise<void> {
   await SynergyEdge.deleteMany({ patch_version: patchVersion });
   logger.info('Stale edges deleted');
 
-  // Compute and flush each type separately to avoid holding all edges in memory
-  const keywordEdges = computeAllKeywordEdges(elements);
-  logger.info({ count: keywordEdges.length }, 'Keyword edges computed');
-  const kwInserted = await flushEdges(keywordEdges);
-  logger.info({ inserted: kwInserted }, 'Keyword edges written');
+  // Stream keyword edges directly to DB in batches — computeAllKeywordEdges accumulates
+  // all 700k+ edges in memory at once (O(N²) allocation) which exceeds the heap limit.
+  const KW_BATCH_SIZE = 2000;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const kwBatch: any[] = [];
+  let kwInserted = 0;
+  let kwCount = 0;
+
+  for (let i = 0; i < elements.length; i++) {
+    for (let j = i + 1; j < elements.length; j++) {
+      const weight = computeKeywordOverlapWeight(elements[i], elements[j]);
+      if (weight === null || weight < 0.01) continue;
+      kwCount++;
+
+      const aScalesB = elements[i].scales_keywords.filter(k => elements[j].keywords.includes(k));
+      const bScalesA = elements[j].scales_keywords.filter(k => elements[i].keywords.includes(k));
+      const shared_keywords = [...new Set([...aScalesB, ...bScalesA])];
+
+      kwBatch.push({
+        insertOne: {
+          document: {
+            element_a: new Types.ObjectId(elements[i]._id.toString()),
+            element_b: new Types.ObjectId(elements[j]._id.toString()),
+            edge_type: 'keyword_overlap',
+            link: { shared_keywords },
+            weight,
+            patch_version: patchVersion,
+            computed_at: new Date(),
+          },
+        },
+      });
+
+      if (kwBatch.length >= KW_BATCH_SIZE) {
+        const result = await SynergyEdge.bulkWrite(kwBatch);
+        kwInserted += result.insertedCount;
+        kwBatch.length = 0;
+      }
+    }
+  }
+  if (kwBatch.length > 0) {
+    const result = await SynergyEdge.bulkWrite(kwBatch);
+    kwInserted += result.insertedCount;
+  }
+  logger.info({ count: kwCount, inserted: kwInserted }, 'Keyword edges computed and written');
 
   const conditionEdges = computeConditionEdges(elements);
   logger.info({ count: conditionEdges.length }, 'Condition edges computed');

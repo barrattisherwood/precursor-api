@@ -68,29 +68,43 @@ export async function computeEdges(patchVersion: string): Promise<void> {
   await SynergyEdge.deleteMany({ patch_version: patchVersion });
   logger.info('Stale edges deleted');
 
-  // Stream keyword edges directly to DB in batches — computeAllKeywordEdges accumulates
-  // all 700k+ edges in memory at once (O(N²) allocation) which exceeds the heap limit.
+  // Pre-filter: elements with no keywords AND no scales_keywords can never produce a
+  // keyword overlap edge — skipping them reduces the O(N²) pair count significantly.
+  const kwElements = elements.filter(
+    e => (e.keywords?.length ?? 0) > 0 || (e.scales_keywords?.length ?? 0) > 0,
+  );
+  logger.info(
+    { total: elements.length, kwEligible: kwElements.length },
+    'Elements eligible for keyword edge computation',
+  );
+
+  // Stream keyword edges directly to DB in batches.  Yielding to the event loop after
+  // each outer iteration lets V8 GC collect the burst of temporary arrays/Sets created
+  // by computeKeywordOverlapWeight before the next slice starts.
   const KW_BATCH_SIZE = 2000;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const kwBatch: any[] = [];
   let kwInserted = 0;
   let kwCount = 0;
 
-  for (let i = 0; i < elements.length; i++) {
-    for (let j = i + 1; j < elements.length; j++) {
-      const weight = computeKeywordOverlapWeight(elements[i], elements[j]);
+  for (let i = 0; i < kwElements.length; i++) {
+    // Yield after each outer iteration so V8 can GC temp objects from the inner loop.
+    await new Promise<void>(resolve => setImmediate(resolve));
+
+    for (let j = i + 1; j < kwElements.length; j++) {
+      const weight = computeKeywordOverlapWeight(kwElements[i], kwElements[j]);
       if (weight === null || weight < 0.01) continue;
       kwCount++;
 
-      const aScalesB = elements[i].scales_keywords.filter(k => elements[j].keywords.includes(k));
-      const bScalesA = elements[j].scales_keywords.filter(k => elements[i].keywords.includes(k));
+      const aScalesB = kwElements[i].scales_keywords.filter(k => kwElements[j].keywords.includes(k));
+      const bScalesA = kwElements[j].scales_keywords.filter(k => kwElements[i].keywords.includes(k));
       const shared_keywords = [...new Set([...aScalesB, ...bScalesA])];
 
       kwBatch.push({
         insertOne: {
           document: {
-            element_a: new Types.ObjectId(elements[i]._id.toString()),
-            element_b: new Types.ObjectId(elements[j]._id.toString()),
+            element_a: new Types.ObjectId(kwElements[i]._id.toString()),
+            element_b: new Types.ObjectId(kwElements[j]._id.toString()),
             edge_type: 'keyword_overlap',
             link: { shared_keywords },
             weight,

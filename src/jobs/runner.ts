@@ -206,6 +206,31 @@ async function main(): Promise<void> {
         return;
       }
 
+      // One-time migration: derive meta.base_class from meta.ascendancy_class for
+      // ascendancy nodes (PoE2 passive tree JSON has no classes[] mapping).
+      if (req.url === '/migrate/ascendancy-base-class' && req.method === 'POST') {
+        Element.find({ facet: 'ascendancy_node', 'meta.ascendancy_class': { $exists: true, $ne: null } })
+          .select('_id meta.ascendancy_class')
+          .lean()
+          .then(async docs => {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const ops = docs.map((doc: any) => ({
+              updateOne: {
+                filter: { _id: doc._id },
+                update: { $set: { 'meta.base_class': (doc.meta?.ascendancy_class as string ?? '').replace(/\d+$/, '') || null } },
+              },
+            }));
+            const result = ops.length > 0 ? await Element.bulkWrite(ops) : { modifiedCount: 0 };
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ migrated: result.modifiedCount, total: ops.length }));
+          })
+          .catch(err => {
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: String(err) }));
+          });
+        return;
+      }
+
       const triggerMatch = req.url?.match(/^\/trigger\/([a-z-]+)$/);
       if (triggerMatch && req.method === 'POST') {
         const jobName = triggerMatch[1];

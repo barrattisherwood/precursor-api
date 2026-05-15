@@ -209,25 +209,16 @@ async function main(): Promise<void> {
       // One-time migration: derive meta.base_class from meta.ascendancy_class for
       // ascendancy nodes (PoE2 passive tree JSON has no classes[] mapping).
       if (req.url === '/migrate/ascendancy-base-class' && req.method === 'POST') {
-        Element.find({ facet: 'ascendancy_node', 'meta.ascendancy_class': { $exists: true, $ne: null } })
-          .select('_id meta.ascendancy_class')
-          .lean()
-          .then(async docs => {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const ops = docs.map((doc: any) => ({
-              updateOne: {
-                filter: { _id: doc._id },
-                update: { $set: { 'meta.base_class': (doc.meta?.ascendancy_class as string ?? '').replace(/\d+$/, '') || null } },
-              },
-            }));
-            const result = ops.length > 0 ? await Element.bulkWrite(ops) : { modifiedCount: 0 };
-            res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ migrated: result.modifiedCount, total: ops.length }));
-          })
-          .catch(err => {
-            res.writeHead(500, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ error: String(err) }));
-          });
+        Element.updateMany(
+          { facet: 'ascendancy_node', 'meta.ascendancy_class': { $exists: true, $ne: null } },
+          [{ $set: { 'meta.base_class': { $rtrim: { input: '$meta.ascendancy_class', chars: '0123456789' } } } }],
+        ).then(result => {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ migrated: result.modifiedCount, matched: result.matchedCount }));
+        }).catch(err => {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: String(err) }));
+        });
         return;
       }
 

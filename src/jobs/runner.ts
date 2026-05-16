@@ -178,6 +178,48 @@ async function main(): Promise<void> {
         return;
       }
 
+      // Condition chain diagnostic — shows exact string values in produces/scales_conditions and whether they match
+      if (req.url === '/diagnostics/conditions' && req.method === 'GET') {
+        const pv = process.env.PATCH_VERSION ?? '0.1.0';
+        Element.find({ patch_version: pv }, { name: 1, facet: 1, produces: 1, scales_conditions: 1, stats: 1 }).lean().then(docs => {
+          const producedConditions = new Map<string, string[]>();
+          const scaledConditions = new Map<string, string[]>();
+          const statConditionIds: string[] = [];
+
+          for (const doc of docs) {
+            for (const p of (doc.produces ?? []) as { condition: string }[]) {
+              if (!producedConditions.has(p.condition)) producedConditions.set(p.condition, []);
+              producedConditions.get(p.condition)!.push((doc.name as string));
+            }
+            for (const c of (doc.scales_conditions ?? []) as string[]) {
+              if (!scaledConditions.has(c)) scaledConditions.set(c, []);
+              scaledConditions.get(c)!.push((doc.name as string));
+            }
+            for (const s of (doc.stats ?? []) as { stat_id: string; condition: string | null }[]) {
+              if (s.condition) statConditionIds.push(s.condition);
+            }
+          }
+
+          const produced = [...producedConditions.entries()].map(([cond, names]) => ({
+            condition: cond, count: names.length, examples: names.slice(0, 5),
+          }));
+          const scaled = [...scaledConditions.entries()].map(([cond, names]) => ({
+            condition: cond, count: names.length, examples: names.slice(0, 5),
+          }));
+          const matchingConditions = produced
+            .filter(p => scaledConditions.has(p.condition))
+            .map(p => p.condition);
+          const uniqueStatConditions = [...new Set(statConditionIds)];
+
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ produced, scaled, matching_conditions: matchingConditions, stat_conditions_on_stats: uniqueStatConditions }));
+        }).catch(err => {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: String(err) }));
+        });
+        return;
+      }
+
       if (req.url === '/trigger/analyze-clusters/dry-run' && req.method === 'POST') {
         let body = '';
         req.on('data', chunk => { body += chunk; });

@@ -178,6 +178,31 @@ async function main(): Promise<void> {
         return;
       }
 
+      // Stat ID diagnostic — shows actual stat IDs by facet so we can understand PoE2 stat formats
+      if (req.url === '/diagnostics/stat-ids' && req.method === 'GET') {
+        const pv = process.env.PATCH_VERSION ?? '0.1.0';
+        Element.find({ patch_version: pv }, { name: 1, facet: 1, stats: 1 }).lean().then(docs => {
+          type StatEntry = { stat_id: string; modifier_type: string; condition?: string | null };
+          const byFacet: Record<string, { more: string[]; increased_sample: string[]; base_sample: string[] }> = {};
+          for (const doc of docs) {
+            const facet = doc.facet as string;
+            if (!byFacet[facet]) byFacet[facet] = { more: [], increased_sample: [], base_sample: [] };
+            const bucket = byFacet[facet];
+            for (const s of (doc.stats ?? []) as StatEntry[]) {
+              if (s.modifier_type === 'more' && bucket.more.length < 15) bucket.more.push(`${s.stat_id} [${doc.name}]`);
+              if (s.modifier_type === 'increased' && bucket.increased_sample.length < 10) bucket.increased_sample.push(s.stat_id);
+              if (s.modifier_type === 'base' && bucket.base_sample.length < 5) bucket.base_sample.push(s.stat_id);
+            }
+          }
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(byFacet));
+        }).catch(err => {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: String(err) }));
+        });
+        return;
+      }
+
       // Condition chain diagnostic — shows exact string values in produces/scales_conditions and whether they match
       if (req.url === '/diagnostics/conditions' && req.method === 'GET') {
         const pv = process.env.PATCH_VERSION ?? '0.1.0';

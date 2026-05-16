@@ -2,7 +2,7 @@ import { IElement } from '@precursor/engine';
 
 export const MAX_ITEM_AFFIXES = 2;
 export const MAX_UNIQUE_ITEMS = 3;
-export const MAX_SKILL_GEMS = 3;
+export const MAX_SKILL_GEMS = 5;
 export const MAX_PASSIVES = 3;
 
 // Weapon groups: elements that require a specific weapon type equipped.
@@ -53,6 +53,16 @@ export function isQualityCluster(
   const clusterEls = partial.element_ids
     .map(id => elementMap.get(id.toString()))
     .filter(Boolean) as IElement[];
+
+  // Standalone keyword pairs (no condition/stat edges) are too broad to be actionable build advice.
+  // Two elements sharing a keyword tag doesn't mean they form a coherent build.
+  // Condition chain pairs (producer → scaler) are genuinely meaningful and exempt.
+  if (clusterEls.length < 3) {
+    const hasConditionEdge = partial.edges.some(
+      e => e.edge_type === 'condition_chain' || e.edge_type === 'condition_amplification' || e.edge_type === 'stat_multiplication',
+    );
+    if (!hasConditionEdge) return 'keyword_pair';
+  }
 
   if (clusterEls.filter(e => e.facet === 'item_affix').length > MAX_ITEM_AFFIXES)  return 'item_affixes';
   if (clusterEls.filter(e => e.facet === 'unique_item').length > MAX_UNIQUE_ITEMS) return 'unique_items';

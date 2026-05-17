@@ -134,32 +134,39 @@ clustersRouter.get('/', cache(300), async (req: Request, res: Response) => {
     let total;
 
     if (maxPerElement > 0) {
-      // Fetch enough candidates to fill the page after diversity filtering.
-      // Over-fetch by a factor so filtering doesn't leave the page thin.
-      const OVER_FETCH = 20;
-      const [candidates, trueTotal] = await Promise.all([
-        SynergyCluster.find(query)
-          .sort({ [sortField]: -1 })
-          .limit((pageOffset + pageSize) * OVER_FETCH)
-          .populate('element_ids')
-          .lean(),
-        SynergyCluster.countDocuments(query),
-      ]);
+      // Pass 1: fetch all matching IDs (lightweight — element_ids only) to apply diversity
+      // filter across the full result set. Avoids the over-fetch window running dry on
+      // deep pages, which caused empty results past page ~5.
+      const allCandidates = await SynergyCluster.find(query)
+        .sort({ [sortField]: -1 })
+        .select('element_ids')
+        .lean();
 
       const elementCount = new Map<string, number>();
-      const filtered = candidates.filter(c => {
-        const ids = (c.element_ids as unknown[]).map((e: unknown) =>
-          (e as { _id?: { toString(): string }; toString?(): string })._id?.toString() ??
-          (e as { toString(): string }).toString(),
-        );
-        const maxCount = Math.max(...ids.map(id => elementCount.get(id) ?? 0));
-        if (maxCount >= maxPerElement) return false;
-        ids.forEach(id => elementCount.set(id, (elementCount.get(id) ?? 0) + 1));
-        return true;
-      });
+      const filteredIds = allCandidates
+        .filter(c => {
+          const ids = (c.element_ids as { toString(): string }[]).map(id => id.toString());
+          const maxCount = Math.max(0, ...ids.map(id => elementCount.get(id) ?? 0));
+          if (maxCount >= maxPerElement) return false;
+          ids.forEach(id => elementCount.set(id, (elementCount.get(id) ?? 0) + 1));
+          return true;
+        })
+        .map(c => c._id as { toString(): string });
 
-      total = trueTotal;
-      clusters = filtered.slice(pageOffset, pageOffset + pageSize);
+      total = filteredIds.length;
+      const pageIds = filteredIds.slice(pageOffset, pageOffset + pageSize);
+
+      // Pass 2: fetch and populate only the current page's clusters.
+      const orderMap = new Map(pageIds.map((id, i) => [id.toString(), i]));
+      const pageClusters = await SynergyCluster.find({ _id: { $in: pageIds } })
+        .populate('element_ids')
+        .lean();
+      pageClusters.sort(
+        (a, b) =>
+          (orderMap.get((a._id as { toString(): string }).toString()) ?? 0) -
+          (orderMap.get((b._id as { toString(): string }).toString()) ?? 0),
+      );
+      clusters = pageClusters;
     } else {
       [clusters, total] = await Promise.all([
         SynergyCluster.find(query)

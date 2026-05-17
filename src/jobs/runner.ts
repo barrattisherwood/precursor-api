@@ -178,6 +178,32 @@ async function main(): Promise<void> {
         return;
       }
 
+      // Ascendancy name map — groups ascendancy node names by ascendancy_class to reveal ID→name mapping
+      if (req.url === '/diagnostics/ascendancy-names' && req.method === 'GET') {
+        const pv = process.env.PATCH_VERSION ?? '0.1.0';
+        Element.find(
+          { patch_version: pv, facet: 'ascendancy_node' },
+          { name: 1, 'meta.ascendancy_class': 1 },
+        ).lean().then(docs => {
+          const groups = new Map<string, Set<string>>();
+          for (const doc of docs) {
+            const cls = doc.meta.ascendancy_class as string;
+            if (!groups.has(cls)) groups.set(cls, new Set());
+            groups.get(cls)!.add(doc.name as string);
+          }
+          const result: Record<string, string[]> = {};
+          for (const [cls, names] of [...groups.entries()].sort()) {
+            result[cls] = [...names].sort();
+          }
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(result));
+        }).catch(err => {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: String(err) }));
+        });
+        return;
+      }
+
       // Stat ID diagnostic — shows actual stat IDs by facet so we can understand PoE2 stat formats
       if (req.url === '/diagnostics/stat-ids' && req.method === 'GET') {
         const pv = process.env.PATCH_VERSION ?? '0.1.0';

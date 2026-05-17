@@ -15,11 +15,31 @@ clustersRouter.get('/tags', cache(3600), async (_req: Request, res: Response) =>
   }
 });
 
+// Hardcoded mapping of internal tree IDs → display names. IDs not present here are
+// either placeholder slots ([DNT-UNUSED]) or blank transition nodes with no ascendancy.
+const ASCENDANCY_NAMES: Record<string, string> = {
+  Warrior1: 'Titan', Warrior2: 'Warbringer', Warrior3: 'Smith of Kitava',
+  Sorceress1: 'Stormweaver', Sorceress2: 'Chronomancer', Sorceress3: 'Disciple of Varashta',
+  Ranger1: 'Deadeye', Ranger3: 'Pathfinder',
+  Mercenary1: 'Tactician', Mercenary2: 'Witchhunter', Mercenary3: 'Gemling Legionnaire',
+  Monk2: 'Invoker', Monk3: 'Acolyte of Chayula',
+  Witch1: 'Infernalist', Witch2: 'Blood Mage', Witch3: 'Lich',
+  Huntress1: 'Amazon', Huntress3: 'Ritualist',
+  Druid1: 'Oracle', Druid2: 'Shaman',
+};
+
+// Display order: original 6 EA classes first, then newer additions
+const BASE_CLASS_ORDER = ['Warrior', 'Sorceress', 'Ranger', 'Monk', 'Mercenary', 'Witch', 'Huntress', 'Druid'];
+
 // GET /api/clusters/ascendancies — ascendancy classes grouped by base class (PoE2 only)
 clustersRouter.get('/ascendancies', cache(3600), async (_req: Request, res: Response) => {
   try {
     const docs = await Element.find(
-      { facet: 'ascendancy_node', 'meta.base_class': { $exists: true, $ne: null } },
+      {
+        facet: 'ascendancy_node',
+        'meta.base_class': { $exists: true, $ne: null },
+        name: { $not: /^\[DNT-UNUSED\]/ },
+      },
       { 'meta.ascendancy_class': 1, 'meta.base_class': 1, _id: 0 },
     ).lean();
 
@@ -27,17 +47,27 @@ clustersRouter.get('/ascendancies', cache(3600), async (_req: Request, res: Resp
     for (const doc of docs) {
       const baseClass = doc.meta.base_class as string | undefined;
       const ascClass = doc.meta.ascendancy_class as string | undefined;
-      if (!baseClass || !ascClass) continue;
+      if (!baseClass || !ascClass || !ASCENDANCY_NAMES[ascClass]) continue;
       if (!groupMap.has(baseClass)) groupMap.set(baseClass, new Set());
       groupMap.get(baseClass)!.add(ascClass);
     }
 
-    const result = [...groupMap.entries()]
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([base_class, ascSet]) => ({
-        base_class,
-        ascendancies: [...ascSet].sort(),
-      }));
+    const sortedClasses = [...groupMap.keys()].sort((a, b) => {
+      const ai = BASE_CLASS_ORDER.indexOf(a);
+      const bi = BASE_CLASS_ORDER.indexOf(b);
+      if (ai !== -1 && bi !== -1) return ai - bi;
+      if (ai !== -1) return -1;
+      if (bi !== -1) return 1;
+      return a.localeCompare(b);
+    });
+
+    const result = sortedClasses.map(base_class => ({
+      base_class,
+      ascendancies: [...(groupMap.get(base_class) ?? new Set())]
+        .filter(id => ASCENDANCY_NAMES[id])
+        .sort()
+        .map(id => ({ id, name: ASCENDANCY_NAMES[id] })),
+    }));
 
     res.json(result);
   } catch (err) {

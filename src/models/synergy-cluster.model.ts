@@ -18,6 +18,7 @@ export interface ISynergyClusterDoc extends Document {
   spirit_feasible: boolean;
   combo_gated: boolean;
   league_scoped: boolean;
+  relevant_ascendancies: string[];
   description: string;
   patch_version: string;
   computed_at: Date;
@@ -30,6 +31,7 @@ const SynergyClusterSchema = new Schema<ISynergyClusterDoc>({
   element_ids: [{ type: Schema.Types.ObjectId, ref: 'Element' }],
   facets_represented: [String],
   tags: { type: [String], default: [] },
+  relevant_ascendancies: { type: [String], default: [] },
   edges: [
     {
       from: { type: Schema.Types.ObjectId, ref: 'Element' },
@@ -58,6 +60,7 @@ SynergyClusterSchema.index({ element_ids: 1 });
 SynergyClusterSchema.index({ patch_version: 1, hidden_score: -1 });
 SynergyClusterSchema.index({ facets_represented: 1 });
 SynergyClusterSchema.index({ tags: 1 });
+SynergyClusterSchema.index({ relevant_ascendancies: 1 });
 SynergyClusterSchema.index({ league_scoped: 1, active: 1 });
 SynergyClusterSchema.index({ spirit_feasible: 1 });
 

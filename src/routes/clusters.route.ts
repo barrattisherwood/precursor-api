@@ -104,11 +104,7 @@ clustersRouter.get('/', cache(300), async (req: Request, res: Response) => {
     if (edge_type) query['edges.edge_type'] = edge_type;
     if (element_id) query.element_ids = element_id;
     if (ascendancy_class) {
-      const ascNodes = await Element.find(
-        { facet: 'ascendancy_node', 'meta.ascendancy_class': ascendancy_class },
-        { _id: 1 },
-      ).lean();
-      query.element_ids = { $in: ascNodes.map(e => e._id) };
+      query.relevant_ascendancies = ascendancy_class;
     }
     if (tags) {
       const tagList = String(tags).split(',').map(t => t.trim()).filter(Boolean);

@@ -15,6 +15,7 @@ import { LadderSnapshot } from '../models/ladder-snapshot.model';
 import { Types } from 'mongoose';
 import { logger } from '../logger';
 import { isQualityCluster } from './cluster-quality';
+import { ASCENDANCY_PROFILES } from '../data/ascendancy-profiles';
 
 const PATCH_VERSION = process.env.PATCH_VERSION ?? '0.1.0';
 
@@ -201,6 +202,13 @@ export async function analyzeClusters(): Promise<void> {
       ),
     ];
 
+    const tagSetLower = new Set(tags.map(t => t.toLowerCase()));
+    const relevant_ascendancies = Object.entries(ASCENDANCY_PROFILES)
+      .filter(([, profileKeywords]) =>
+        profileKeywords.some(kw => tagSetLower.has(kw.toLowerCase())),
+      )
+      .map(([id]) => id);
+
     ops.push({
       updateOne: {
         filter: { cluster_key: clusterKey, patch_version: PATCH_VERSION },
@@ -212,6 +220,7 @@ export async function analyzeClusters(): Promise<void> {
           $set: {
             facets_represented: partial.facets_represented,
             tags,
+            relevant_ascendancies,
             edges: partial.edges.map((e: { from: { toString(): string }; to: { toString(): string }; edge_type: string; weight: number }) => ({
               from: new Types.ObjectId(e.from.toString()),
               to: new Types.ObjectId(e.to.toString()),

@@ -22,6 +22,7 @@ const ElementSchema = new Schema<IElementDoc>(
       class_start: String,
       ascendancy: String,
       ascendancy_class: String,
+      base_class: String,
       incomplete: Boolean,
       affix_type: { type: String, enum: ['prefix', 'suffix', 'implicit', 'unique'] },
       item_classes: [String],

@@ -40,6 +40,11 @@ export interface DryRunParams {
   maxUniqueItems?: number;
   maxSkillGems?: number;
   kwHubThreshold?: number;
+  // Overrides findKeywordClusters' minHubWeight directly, decoupling it from
+  // kwHubThreshold (which the engine otherwise derives as kwHubThreshold * 0.5).
+  // Lets a dry run compare hub-ratio changes in isolation without also moving
+  // the standalone-pair threshold.
+  kwHubWeightMin?: number;
   statHubThreshold?: number;
   maxSpokesPerHub?: number;
   chainMinLength?: number;
@@ -78,6 +83,7 @@ export interface DryRunResult {
     with_scales_keywords: number;
     with_stats: number;
   };
+  elements_covered: number;
   stat_edges: {
     computed: number;
     above_threshold: number;
@@ -93,11 +99,13 @@ export interface DryRunResult {
 
 
 export async function dryRunClusters(overrides: DryRunParams = {}): Promise<DryRunResult> {
+  const kwHubThreshold = overrides.kwHubThreshold ?? 0.5;
   const params: Required<DryRunParams> = {
     maxItemAffixes: overrides.maxItemAffixes ?? 2,
     maxUniqueItems: overrides.maxUniqueItems ?? 3,
     maxSkillGems: overrides.maxSkillGems ?? 3,
-    kwHubThreshold: overrides.kwHubThreshold ?? 0.5,
+    kwHubThreshold,
+    kwHubWeightMin: overrides.kwHubWeightMin ?? kwHubThreshold * 0.5,
     statHubThreshold: overrides.statHubThreshold ?? 0.4,
     maxSpokesPerHub: overrides.maxSpokesPerHub ?? 5,
     chainMinLength: overrides.chainMinLength ?? 3,
@@ -181,7 +189,13 @@ export async function dryRunClusters(overrides: DryRunParams = {}): Promise<DryR
   };
 
   const partialClusters = findChainClusters(conditionEdges, elementMap, params.chainMinLength);
-  const keywordClusters = findKeywordClusters(keywordEdges, elementMap, params.kwHubThreshold, params.maxSpokesPerHub);
+  const keywordClusters = findKeywordClusters(
+    keywordEdges,
+    elementMap,
+    params.kwHubThreshold,
+    params.maxSpokesPerHub,
+    params.kwHubWeightMin,
+  );
 
   const allPartial = [...partialClusters, ...keywordClusters];
 
@@ -232,6 +246,13 @@ export async function dryRunClusters(overrides: DryRunParams = {}): Promise<DryR
     .slice(0, 20)
     .map(([tag, count]) => ({ tag, count }));
 
+  const coveredElementIds = new Set<string>();
+  for (const c of filtered) {
+    for (const id of c.element_ids) {
+      coveredElementIds.add((id as { toString(): string }).toString());
+    }
+  }
+
   return {
     params,
     total_discovered: allPartial.length,
@@ -248,5 +269,6 @@ export async function dryRunClusters(overrides: DryRunParams = {}): Promise<DryR
     top_tags,
     element_field_coverage,
     stat_edges,
+    elements_covered: coveredElementIds.size,
   };
 }

@@ -8,6 +8,7 @@ import { clustersRouter } from './routes/clusters.route';
 import { elementsRouter } from './routes/elements.route';
 import { economyRouter } from './routes/economy.route';
 import { healthRouter } from './routes/health.route';
+import { reviewRouter } from './routes/review.route';
 import { attributionHeader } from './middleware/attribution';
 import { rateLimiter } from './middleware/rate-limit';
 import { logger } from './logger';
@@ -43,8 +44,12 @@ app.use(
         callback(new Error(`CORS blocked: ${origin}`));
       }
     },
-    methods: ['GET'],
-    allowedHeaders: ['Content-Type'],
+    // POST + x-admin-secret added for /api/review (internal cluster review
+    // tool) — still gated by the same ALLOWED_ORIGINS whitelist above, and
+    // doesn't grant anything new on other routes since none of them register
+    // POST handlers regardless of what CORS allows through.
+    methods: ['GET', 'POST'],
+    allowedHeaders: ['Content-Type', 'x-admin-secret'],
     maxAge: 600,
   }),
 );
@@ -57,6 +62,7 @@ app.use('/api/admin', adminRouter);
 app.use('/api/clusters', clustersRouter);
 app.use('/api/elements', elementsRouter);
 app.use('/api/economy', economyRouter);
+app.use('/api/review', reviewRouter);
 
 Sentry.setupExpressErrorHandler(app);
 

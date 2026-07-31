@@ -45,6 +45,15 @@ export interface DryRunParams {
   // Lets a dry run compare hub-ratio changes in isolation without also moving
   // the standalone-pair threshold.
   kwHubWeightMin?: number;
+  // When set, additionally runs keyword-hub clustering with this threshold as
+  // a baseline for comparison (same kwHubThreshold/maxSpokesPerHub, only the
+  // hub cutoff differs), and buckets the primary run's clusters into
+  // "recovered" (touch >=1 element the baseline never covers) vs "existing"
+  // (fully covered by the baseline already) — with theoretical_score stats
+  // for each bucket. Lets a threshold change be judged by whether the
+  // clusters it recovers are actually as good as the ones already there,
+  // not just how many there are.
+  compareKwHubWeightMin?: number;
   statHubThreshold?: number;
   maxSpokesPerHub?: number;
   chainMinLength?: number;
@@ -95,6 +104,32 @@ export interface DryRunResult {
     weight_max: number | null;
     weight_avg: number | null;
   };
+  comparison?: {
+    baseline_kw_hub_weight_min: number;
+    baseline_elements_covered: number;
+    recovered: ClusterScoreBucket;
+    existing: ClusterScoreBucket;
+  };
+}
+
+export interface ClusterScoreBucket {
+  count: number;
+  theoretical_score_mean: number | null;
+  theoretical_score_median: number | null;
+}
+
+function scoreBucket(scores: number[]): ClusterScoreBucket {
+  if (scores.length === 0) {
+    return { count: 0, theoretical_score_mean: null, theoretical_score_median: null };
+  }
+  const sorted = [...scores].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  const median = sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+  return {
+    count: scores.length,
+    theoretical_score_mean: scores.reduce((s, v) => s + v, 0) / scores.length,
+    theoretical_score_median: median,
+  };
 }
 
 
@@ -106,6 +141,9 @@ export async function dryRunClusters(overrides: DryRunParams = {}): Promise<DryR
     maxSkillGems: overrides.maxSkillGems ?? 3,
     kwHubThreshold,
     kwHubWeightMin: overrides.kwHubWeightMin ?? kwHubThreshold * 0.5,
+    // -1 is a sentinel: no baseline comparison requested. A real threshold is
+    // always >= 0, so this can't collide with a genuine caller-supplied value.
+    compareKwHubWeightMin: overrides.compareKwHubWeightMin ?? -1,
     statHubThreshold: overrides.statHubThreshold ?? 0.4,
     maxSpokesPerHub: overrides.maxSpokesPerHub ?? 5,
     chainMinLength: overrides.chainMinLength ?? 3,
@@ -253,6 +291,43 @@ export async function dryRunClusters(overrides: DryRunParams = {}): Promise<DryR
     }
   }
 
+  let comparison: DryRunResult['comparison'];
+  if (params.compareKwHubWeightMin >= 0) {
+    // Same edges/elements/maxSpokesPerHub/kwHubThreshold — only the hub cutoff
+    // differs, so any difference in output is attributable to that alone.
+    const baselineKeywordClusters = findKeywordClusters(
+      keywordEdges,
+      elementMap,
+      params.kwHubThreshold,
+      params.maxSpokesPerHub,
+      params.compareKwHubWeightMin,
+    );
+    const baselineFiltered = [...partialClusters, ...baselineKeywordClusters].filter(
+      partial => isQualityCluster(partial, elementMap) === null,
+    );
+    const baselineElementIds = new Set<string>();
+    for (const c of baselineFiltered) {
+      for (const id of c.element_ids) {
+        baselineElementIds.add((id as { toString(): string }).toString());
+      }
+    }
+
+    const recoveredScores: number[] = [];
+    const existingScores: number[] = [];
+    for (const c of filtered) {
+      const ids = c.element_ids.map((id: { toString(): string }) => id.toString());
+      const isRecovered = ids.some(id => !baselineElementIds.has(id));
+      (isRecovered ? recoveredScores : existingScores).push(c.theoretical_score);
+    }
+
+    comparison = {
+      baseline_kw_hub_weight_min: params.compareKwHubWeightMin,
+      baseline_elements_covered: baselineElementIds.size,
+      recovered: scoreBucket(recoveredScores),
+      existing: scoreBucket(existingScores),
+    };
+  }
+
   return {
     params,
     total_discovered: allPartial.length,
@@ -270,5 +345,6 @@ export async function dryRunClusters(overrides: DryRunParams = {}): Promise<DryR
     element_field_coverage,
     stat_edges,
     elements_covered: coveredElementIds.size,
+    comparison,
   };
 }
